@@ -11,17 +11,20 @@ aiohttp==3.9.1
 aiofiles==23.2.0
 httpx==0.25.2
 
-# Vector Database - ChromaDB с фиксированным numpy
+# Vector Database - ChromaDB с совместимыми версиями
 numpy<2.0.0
+sentence-transformers>=2.7.0
 chromadb==0.4.18
-sentence-transformers==2.2.2
 
-# LLM dependencies for GPTQ quantization
-transformers==4.35.2
+# LLM dependencies for HuggingFace Transformers
+transformers>=4.35.0
 torch>=2.0.0
 accelerate==0.24.1
 auto-gptq==0.4.2
 optimum==1.15.0
+
+# Фиксируем совместимые версии HuggingFace
+huggingface-hub>=0.20.0,<0.25.0
 
 # Text processing
 beautifulsoup4==4.12.2

@@ -1,4 +1,4 @@
-# Dockerfile для HuggingFace Spaces с принудительной установкой зависимостей
+# Dockerfile для HuggingFace Spaces - ИСПРАВЛЕННАЯ ВЕРСИЯ
 FROM python:3.11-slim
 
 # Установка системных зависимостей
@@ -17,25 +17,23 @@ ENV HOME=/home/user \
 # Создание рабочей директории
 WORKDIR $HOME/app
 
-# Копирование requirements и установка зависимостей
+# КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Установка совместимых версий PyTorch
+RUN pip install --user --no-cache-dir \
+    torch==2.1.0 \
+    torchvision==0.16.0 \
+    torchaudio==2.1.0 \
+    --index-url https://download.pytorch.org/whl/cpu
+
+# Устанавливаем sentence-transformers с совместимой версией
+RUN pip install --user --no-cache-dir sentence-transformers==2.7.0
+
+# Копирование requirements и установка остальных зависимостей
 COPY --chown=user requirements.txt .
 
-# Обновляем pip до последней версии
-RUN pip install --user --upgrade pip
-
-# Устанавливаем torch сначала для стабильности (CPU версия)
-RUN pip install --user --no-cache-dir torch>=2.0.0 --index-url https://download.pytorch.org/whl/cpu
-
-# Фиксируем версию numpy для совместимости
-RUN pip install --user --no-cache-dir "numpy<2.0.0"
-
-# Принудительно устанавливаем sentence-transformers отдельно
-RUN pip install --user --no-cache-dir sentence-transformers==2.2.2
-
-# Устанавливаем остальные зависимости
+# Устанавливаем остальные зависимости ПОСЛЕ PyTorch
 RUN pip install --user --no-cache-dir -r requirements.txt
 
-# Проверяем что sentence-transformers установлен
+# Проверяем что sentence-transformers работает
 RUN python -c "import sentence_transformers; print('✅ sentence-transformers OK')"
 
 # Копирование кода приложения
@@ -49,7 +47,6 @@ ENV PYTHONPATH=$HOME/app
 ENV PYTHONUNBUFFERED=1
 ENV LOG_LEVEL=INFO
 ENV USE_CHROMADB=true
-ENV OLLAMA_ENABLED=false
 ENV LLM_DEMO_MODE=false
 ENV CORS_ORIGINS=["*"]
 
