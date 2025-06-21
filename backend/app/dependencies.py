@@ -1,7 +1,7 @@
-# backend/app/dependencies.py - КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ ASYNC ОШИБКИ
+# backend/app/dependencies.py - ОБНОВЛЕННАЯ ВЕРСИЯ ДЛЯ LLAMACPP
 """
 Зависимости и инициализация сервисов для HuggingFace Spaces
-КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Исправлена async ошибка в search функции
+ОБНОВЛЕНО: Переход с GPTQ на LlamaCpp для стабильной работы
 """
 
 import logging
@@ -44,41 +44,38 @@ _background_tasks = {}
 _executor = ThreadPoolExecutor(max_workers=2)
 
 # ====================================
-# УЛУЧШЕННЫЕ FALLBACK СЕРВИСЫ С ИСПРАВЛЕННЫМ ASYNC
+# УЛУЧШЕННЫЕ FALLBACK СЕРВИСЫ
 # ====================================
 
 class HFSpacesFallbackDocumentService:
-    """Оптимизированный fallback для HF Spaces с ИСПРАВЛЕННЫМ ASYNC"""
+    """Оптимизированный fallback для HF Spaces"""
     
     def __init__(self):
-        self.service_type = "hf_spaces_fallback_v3_async_fixed"
+        self.service_type = "hf_spaces_fallback_v4_llamacpp"
         self.vector_db = type('MockVectorDB', (), {
             'persist_directory': './fallback_db'
         })()
         self.initialization_error = None
-        logger.info("📝 HF Spaces document fallback service ready (async fixed)")
+        logger.info("📝 HF Spaces document fallback service ready (LlamaCpp era)")
     
     async def search(self, query: str, category: str = None, limit: int = 5, min_relevance: float = 0.3) -> List[Dict]:
-        """ИСПРАВЛЕННЫЙ асинхронный поиск с демо результатами"""
+        """Асинхронный поиск с демо результатами"""
         try:
-            # КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Правильный async метод
             logger.info(f"🔍 Fallback search: '{query}'")
-            
-            # Симулируем небольшую задержку для реалистичности
             await asyncio.sleep(0.1)
             
             demo_result = {
                 "content": f"""Legal Analysis for: "{query}"
 
-🏛️ **Document Summary (Demo Mode - ASYNC FIXED)**
+🏛️ **Document Summary (LlamaCpp Ready)**
 This demonstrates the expected API response structure for legal document search.
 
 📋 **Search Context:**
 • Query: "{query}"
 • Category: {category or "General Legal"}
 • Platform: HuggingFace Spaces
-• Mode: Document service initializing...
-• Status: Async search function working correctly
+• LLM Backend: LlamaCpp (stable CPU inference)
+• Status: Document service initializing...
 
 ⚖️ **Expected Features (when fully loaded):**
 • ChromaDB vector search with semantic similarity
@@ -87,23 +84,22 @@ This demonstrates the expected API response structure for legal document search.
 • Legal citation extraction
 
 🔧 **Current Status:**
-Document service is loading in background. This demo shows the expected response format.
-Search function async issues have been resolved.
+Document service is loading in background. LlamaCpp LLM is ready for stable inference without hanging issues.
 
-💡 **Note:** Full document search will be available once ChromaDB initialization completes.""",
+💡 **Note:** Full document search will be available once ChromaDB initialization completes. LlamaCpp provides reliable AI responses.""",
                 
                 "filename": f"legal_search_{query.replace(' ', '_')[:20]}.txt",
                 "document_id": f"demo_{int(time.time())}",
                 "relevance_score": 0.95,
                 "metadata": {
-                    "status": "demo_response_async_fixed",
+                    "status": "demo_response_llamacpp_ready",
                     "category": category or "general",
-                    "service": "hf_spaces_fallback_v3",
+                    "service": "hf_spaces_fallback_v4",
                     "query": query,
                     "platform": "HuggingFace Spaces",
+                    "llm_backend": "llamacpp",
                     "background_loading": _background_loading_started,
-                    "async_fixed": True,
-                    "search_method": "async"
+                    "stable_inference": True
                 }
             }
             
@@ -114,18 +110,19 @@ Search function async issues have been resolved.
             return []
     
     async def get_stats(self) -> Dict:
-        """ИСПРАВЛЕННАЯ асинхронная статистика"""
+        """Асинхронная статистика"""
         try:
-            await asyncio.sleep(0.05)  # Небольшая задержка
+            await asyncio.sleep(0.05)
             return {
                 "total_documents": 0,
                 "categories": ["general", "legislation", "jurisprudence", "government"],
                 "database_type": "Initializing (ChromaDB loading...)",
                 "status": "Background initialization in progress",
                 "platform": "HuggingFace Spaces",
+                "llm_backend": "llamacpp",
                 "background_loading": _background_loading_started,
                 "services_available": SERVICES_AVAILABLE,
-                "async_fixed": True
+                "stable_inference": True
             }
         except Exception as e:
             logger.error(f"Fallback stats error: {e}")
@@ -137,7 +134,7 @@ Search function async issues have been resolved.
             }
     
     async def get_all_documents(self) -> List[Dict]:
-        """ИСПРАВЛЕННЫЙ асинхронный список документов"""
+        """Асинхронный список документов"""
         try:
             await asyncio.sleep(0.05)
             return []
@@ -146,7 +143,7 @@ Search function async issues have been resolved.
             return []
     
     async def delete_document(self, doc_id: str) -> bool:
-        """ИСПРАВЛЕННОЕ асинхронное удаление"""
+        """Асинхронное удаление"""
         try:
             logger.info(f"Demo delete: {doc_id}")
             await asyncio.sleep(0.05)
@@ -156,7 +153,7 @@ Search function async issues have been resolved.
             return False
     
     async def process_and_store_file(self, file_path: str, category: str = "general") -> bool:
-        """ИСПРАВЛЕННАЯ асинхронная обработка файла"""
+        """Асинхронная обработка файла"""
         try:
             logger.info(f"Demo file processing: {file_path}")
             await asyncio.sleep(0.1)
@@ -181,8 +178,6 @@ class HFSpacesFallbackScraperService:
         """Асинхронный демо скрапинг"""
         try:
             logger.info(f"🔍 Demo scraping: {url}")
-            
-            # Симулируем время загрузки
             await asyncio.sleep(0.2)
             
             demo_content = f"""📄 **Legal Document from {url}**
@@ -192,6 +187,7 @@ This is a demonstration of the web scraping functionality for HuggingFace Spaces
 **Document Source:** {url}
 **Status:** Scraper service initializing...
 **Platform:** HuggingFace Spaces
+**LLM Backend:** LlamaCpp (stable inference)
 
 🔧 **Background Loading:**
 The real scraping service (aiohttp + beautifulsoup4) is loading in the background.
@@ -208,7 +204,7 @@ The real scraping service (aiohttp + beautifulsoup4) is loading in the backgroun
 • citizensinformation.ie (Irish civil information)
 • courts.ie (Irish court decisions)
 
-💡 **Real scraping will be available once background initialization completes.**"""
+💡 **Real scraping will be available once background initialization completes. LlamaCpp provides stable AI analysis of scraped content.**"""
             
             return type('DemoDocument', (), {
                 'url': url,
@@ -220,6 +216,7 @@ The real scraping service (aiohttp + beautifulsoup4) is loading in the backgroun
                     'scraped_at': time.time(),
                     'service': 'hf_spaces_fallback',
                     'platform': 'HuggingFace Spaces',
+                    'llm_backend': 'llamacpp',
                     'background_loading': _background_loading_started,
                     'url': url
                 },
@@ -240,89 +237,90 @@ The real scraping service (aiohttp + beautifulsoup4) is loading in the backgroun
                 await asyncio.sleep(delay)
         return results
 
-class HFSpacesImprovedLLMFallback:
-    """Улучшенный LLM fallback с поддержкой украинского языка"""
+class HFSpacesLlamaCppFallback:
+    """Улучшенный LLM fallback для переходного периода к LlamaCpp"""
     
     def __init__(self):
-        self.service_type = "hf_spaces_gptq_fallback_improved"
+        self.service_type = "hf_spaces_llamacpp_fallback"
         self.model_loaded = False
-        self.target_model = "TheBloke/Llama-2-7B-Chat-GPTQ"
-        logger.info(f"🤖 HF Spaces GPTQ fallback ready for: {self.target_model}")
+        self.target_model = "TheBloke/Llama-2-7B-Chat-GGUF"
+        logger.info(f"🦙 HF Spaces LlamaCpp fallback ready for: {self.target_model}")
     
     async def answer_legal_question(self, question: str, context_documents: List[Dict], language: str = "en"):
-        """Асинхронные улучшенные демо ответы"""
+        """Асинхронные демо ответы для LlamaCpp"""
         try:
-            # Импортируем здесь чтобы избежать циклических импортов
-            from services.huggingface_llm_service import LLMResponse
+            # ОБНОВЛЕНО: Импортируем из нового сервиса
+            from services.llamacpp_llm_service import LLMResponse
             
-            # Симулируем время обработки
             await asyncio.sleep(0.3)
             
             if language == "uk":
-                demo_content = f"""🏛️ **Юридична консультація (GPTQ модель завантажується)**
+                demo_content = f"""🦙 **LlamaCpp модель завантажується...**
 
 **Ваше питання:** {question}
 
 **Аналіз документів:** Знайдено {len(context_documents)} релевантних документів у базі знань.
 
-🤖 **Статус GPTQ моделі:**
+🤖 **Статус LlamaCpp моделі:**
 • Модель: `{self.target_model}`
-• Оптимізація: 4-bit GPTQ квантизація
+• Формат: GGUF (оптимізований для CPU)
 • Платформа: HuggingFace Spaces
-• Статус: Завантаження в фоновому режимі...
+• Статус: Завантаження стабільної CPU моделі...
 
 📋 **Очікувана функціональність:**
-✅ Високоякісний аналіз юридичних питань
+✅ Стабільна робота на CPU без зависань
 ✅ Підтримка української та англійської мов
 ✅ Контекстуальні відповіді на основі документів
-✅ Посилання на конкретні статті законів
+✅ Таймаути для запобігання зависанням
 ✅ Практичні рекомендації та покрокові дії
 
 ⏳ **Процес завантаження:**
-1. Ініціалізація трансформерів HuggingFace
-2. Завантаження GPTQ квантизованої моделі (~4GB)
-3. Оптимізація для HuggingFace Spaces (обмеження пам'яті)
+1. Ініціалізація llama-cpp-python
+2. Завантаження GGUF квантизованої моделі (~4GB)
+3. Оптимізація для CPU inference
 4. Підготовка правової системи промптів
 
-💡 **Порада:** GPTQ модель забезпечить високу якість відповідей при мінімальному використанні пам'яті. Спробуйте ще раз через 1-2 хвилини для отримання повної AI відповіді.
+💡 **Порада:** LlamaCpp забезпечить стабільну роботу без проблем з пам'яттю. Спробуйте ще раз через 1 хвилину для отримання повної AI відповіді.
 
 🔧 **Технічні деталі:**
-• Архітектура: Llama-2-7B з 4-bit квантизацією
-• Пам'ять: Оптимізовано для 16GB лімітів HF Spaces
+• Архітектура: Llama-2-7B з GGUF квантизацією
+• Бекенд: llama.cpp (проверенный на CPU)
 • Мови: Англійська та українська
+• Таймауты: 30 секунд (без зависань)
 • Спеціалізація: Правові консультації та аналіз"""
             else:
-                demo_content = f"""🏛️ **Legal Consultation (GPTQ Model Loading)**
+                demo_content = f"""🦙 **LlamaCpp Model Loading...**
 
 **Your Question:** {question}
 
 **Document Analysis:** Found {len(context_documents)} relevant documents in knowledge base.
 
-🤖 **GPTQ Model Status:**
+🤖 **LlamaCpp Model Status:**
 • Model: `{self.target_model}`
-• Optimization: 4-bit GPTQ quantization
+• Format: GGUF (CPU optimized)
 • Platform: HuggingFace Spaces
-• Status: Loading in background...
+• Status: Loading stable CPU model...
 
 📋 **Expected Functionality:**
-✅ High-quality legal question analysis
+✅ Stable CPU inference without hanging
 ✅ English and Ukrainian language support
 ✅ Context-aware responses based on documents
-✅ Specific law and regulation references
+✅ Timeouts to prevent hanging
 ✅ Practical recommendations and step-by-step guidance
 
 ⏳ **Loading Process:**
-1. Initializing HuggingFace Transformers
-2. Loading GPTQ quantized model (~4GB)
-3. Optimizing for HuggingFace Spaces memory limits
+1. Initializing llama-cpp-python
+2. Loading GGUF quantized model (~4GB)
+3. Optimizing for CPU inference
 4. Preparing legal prompt system
 
-💡 **Tip:** GPTQ model will provide high-quality responses with minimal memory usage. Try again in 1-2 minutes for full AI response.
+💡 **Tip:** LlamaCpp will provide stable operation without memory issues. Try again in 1 minute for full AI response.
 
 🔧 **Technical Details:**
-• Architecture: Llama-2-7B with 4-bit quantization
-• Memory: Optimized for 16GB HF Spaces limits
+• Architecture: Llama-2-7B with GGUF quantization
+• Backend: llama.cpp (CPU proven)
 • Languages: English and Ukrainian
+• Timeouts: 30 seconds (no hanging)
 • Specialization: Legal consultation and analysis"""
             
             return LLMResponse(
@@ -336,9 +334,8 @@ class HFSpacesImprovedLLMFallback:
             
         except Exception as e:
             logger.error(f"LLM fallback error: {e}")
-            # Возвращаем простой fallback если что-то пошло не так
             return type('SimpleLLMResponse', (), {
-                'content': f"GPTQ model is loading. Question: {question}",
+                'content': f"LlamaCpp model is loading. Question: {question}",
                 'model': self.target_model,
                 'tokens_used': 10,
                 'response_time': 0.1,
@@ -353,20 +350,21 @@ class HFSpacesImprovedLLMFallback:
             return {
                 "model_loaded": False,
                 "model_name": self.target_model,
-                "huggingface_available": True,
-                "service_type": "gptq_fallback_improved",
+                "llama_cpp_available": True,
+                "service_type": "llamacpp_fallback",
                 "environment": "HuggingFace Spaces",
-                "status": "GPTQ model loading in background",
+                "status": "LlamaCpp model loading in background",
                 "supported_languages": ["en", "uk"],
                 "background_loading": _background_loading_started,
-                "optimization": "4-bit GPTQ quantization",
-                "memory_efficient": True,
+                "optimization": "GGUF quantization for CPU",
+                "stable_inference": True,
+                "timeout_protection": True,
                 "target_model": self.target_model,
                 "recommendations": [
-                    "GPTQ model provides production-quality legal analysis",
-                    "4-bit quantization enables efficient memory usage",
-                    "Background loading ensures fast API startup",
-                    "Full AI responses available after model loads"
+                    "LlamaCpp provides stable CPU inference",
+                    "GGUF format optimized for memory efficiency",
+                    "No hanging issues expected",
+                    "Timeout protection prevents freezing"
                 ]
             }
         except Exception as e:
@@ -374,7 +372,7 @@ class HFSpacesImprovedLLMFallback:
             return {
                 "model_loaded": False,
                 "error": str(e),
-                "service_type": "gptq_fallback_error"
+                "service_type": "llamacpp_fallback_error"
             }
 
 # ====================================
@@ -395,8 +393,6 @@ def _init_document_service_sync():
         try:
             import sentence_transformers
             import chromadb
-            # НЕ инициализируем ChromaDB здесь - слишком медленно
-            # Используем fallback и запускаем ChromaDB в фоне
             logger.info("📚 ChromaDB dependencies available, will init in background")
             
         except ImportError as e:
@@ -439,8 +435,6 @@ def _init_scraper_service_sync():
             libraries_available = False
         
         if libraries_available:
-            # Библиотеки есть, но используем fallback для быстрого старта
-            # Реальный scraper инициализируем в фоне
             logger.info("🌐 Scraper libraries available, will init real scraper in background")
             _start_background_scraper_init()
         
@@ -458,48 +452,47 @@ def _init_scraper_service_sync():
         return scraper
 
 def _init_llm_service_sync():
-    """Синхронная инициализация LLM service"""
+    """ОБНОВЛЕННАЯ синхронная инициализация LLM service для LlamaCpp"""
     global llm_service, _llm_service_initialized, LLM_ENABLED
     
     if _llm_service_initialized:
         return llm_service
     
-    logger.info("🔄 Sync initializing LLM service...")
+    logger.info("🔄 Sync initializing LlamaCpp LLM service...")
     
     try:
         # Проверяем демо режим
         if settings.LLM_DEMO_MODE:
             logger.info("🎭 LLM demo mode enabled")
-            llm_service = HFSpacesImprovedLLMFallback()
+            llm_service = HFSpacesLlamaCppFallback()
             LLM_ENABLED = False
             _llm_service_initialized = True
             return llm_service
         
-        # Проверяем наличие зависимостей без загрузки модели
+        # Проверяем наличие зависимостей LlamaCpp
         try:
-            import torch
-            import transformers
+            import llama_cpp
             dependencies_available = True
-            logger.info("🤖 GPTQ dependencies available")
+            logger.info("🦙 LlamaCpp dependencies available")
         except ImportError as e:
-            logger.warning(f"GPTQ dependencies missing: {e}")
+            logger.warning(f"LlamaCpp dependencies missing: {e}")
             dependencies_available = False
         
         # Всегда используем fallback для быстрого старта
-        llm_service = HFSpacesImprovedLLMFallback()
+        llm_service = HFSpacesLlamaCppFallback()
         LLM_ENABLED = False
         _llm_service_initialized = True
         
-        # Запускаем background загрузку GPTQ модели если зависимости есть
+        # Запускаем background загрузку LlamaCpp модели если зависимости есть
         if dependencies_available:
-            _start_background_gptq_init()
+            _start_background_llamacpp_init()
         
-        logger.info("✅ LLM service ready (fallback + background GPTQ loading)")
+        logger.info("✅ LLM service ready (fallback + background LlamaCpp loading)")
         return llm_service
         
     except Exception as e:
         logger.error(f"❌ LLM sync init failed: {e}")
-        llm_service = HFSpacesImprovedLLMFallback()
+        llm_service = HFSpacesLlamaCppFallback()
         LLM_ENABLED = False
         _llm_service_initialized = True
         return llm_service
@@ -519,18 +512,14 @@ def _start_background_chromadb_init():
     
     def background_chromadb_worker():
         try:
-            time.sleep(2)  # Даем приложению запуститься
+            time.sleep(2)
             logger.info("📚 Background: Initializing ChromaDB...")
             
             from services.chroma_service import DocumentService
             
-            # Создаем директорию
             os.makedirs(settings.CHROMADB_PATH, exist_ok=True)
-            
-            # Инициализируем ChromaDB
             real_service = DocumentService(settings.CHROMADB_PATH)
             
-            # Заменяем глобальный сервис
             global document_service, CHROMADB_ENABLED
             document_service = real_service
             CHROMADB_ENABLED = True
@@ -540,7 +529,6 @@ def _start_background_chromadb_init():
         except Exception as e:
             logger.error(f"❌ Background ChromaDB init failed: {e}")
     
-    # Запускаем в отдельном треде
     future = _executor.submit(background_chromadb_worker)
     _background_tasks["chromadb"] = future
 
@@ -555,15 +543,13 @@ def _start_background_scraper_init():
     
     def background_scraper_worker():
         try:
-            time.sleep(3)  # Даем приложению запуститься
+            time.sleep(3)
             logger.info("🌐 Background: Initializing real scraper...")
             
             from services.scraper_service import LegalSiteScraper
             
-            # Создаем реальный scraper
             real_scraper = LegalSiteScraper()
             
-            # Заменяем глобальный сервис
             global scraper
             scraper = real_scraper
             
@@ -572,28 +558,28 @@ def _start_background_scraper_init():
         except Exception as e:
             logger.error(f"❌ Background scraper init failed: {e}")
     
-    # Запускаем в отдельном треде
     future = _executor.submit(background_scraper_worker)
     _background_tasks["scraper"] = future
 
-def _start_background_gptq_init():
-    """Запускает загрузку GPTQ модели в фоне"""
+def _start_background_llamacpp_init():
+    """НОВАЯ функция: Запускает загрузку LlamaCpp модели в фоне"""
     global _background_tasks
     
-    if "gptq" in _background_tasks:
+    if "llamacpp" in _background_tasks:
         return
     
-    logger.info("🚀 Starting background GPTQ model loading...")
+    logger.info("🚀 Starting background LlamaCpp model loading...")
     
-    def background_gptq_worker():
+    def background_llamacpp_worker():
         try:
             time.sleep(5)  # Даем приложению полностью запуститься
-            logger.info("🤖 Background: Loading GPTQ model...")
+            logger.info("🦙 Background: Loading LlamaCpp model...")
             
-            from services.huggingface_llm_service import create_llm_service
+            # ОБНОВЛЕНО: Импортируем новый сервис
+            from services.llamacpp_llm_service import create_llm_service
             
-            # Пытаемся загрузить GPTQ модель
-            real_llm = create_llm_service("TheBloke/Llama-2-7B-Chat-GPTQ")
+            # Пытаемся загрузить LlamaCpp модель
+            real_llm = create_llm_service("TheBloke/Llama-2-7B-Chat-GGUF")
             
             # Проверяем что модель действительно загрузилась
             if hasattr(real_llm, 'model_loaded') and real_llm.model_loaded:
@@ -602,16 +588,16 @@ def _start_background_gptq_init():
                 llm_service = real_llm
                 LLM_ENABLED = True
                 
-                logger.info("✅ Background: GPTQ model loaded successfully!")
+                logger.info("✅ Background: LlamaCpp model loaded successfully!")
             else:
-                logger.warning("⚠️ Background: GPTQ model not ready, keeping fallback")
+                logger.warning("⚠️ Background: LlamaCpp model not ready, keeping fallback")
                 
         except Exception as e:
-            logger.error(f"❌ Background GPTQ loading failed: {e}")
+            logger.error(f"❌ Background LlamaCpp loading failed: {e}")
     
     # Запускаем в отдельном треде
-    future = _executor.submit(background_gptq_worker)
-    _background_tasks["gptq"] = future
+    future = _executor.submit(background_llamacpp_worker)
+    _background_tasks["llamacpp"] = future
 
 def _start_all_background_tasks():
     """Запускает все background задачи"""
@@ -626,7 +612,7 @@ def _start_all_background_tasks():
     # Запускаем все background задачи
     _start_background_chromadb_init()
     _start_background_scraper_init() 
-    _start_background_gptq_init()
+    _start_background_llamacpp_init()  # ОБНОВЛЕНО: LlamaCpp вместо GPTQ
 
 # ====================================
 # DEPENDENCY FUNCTIONS (СИНХРОННЫЕ)
@@ -636,7 +622,6 @@ def get_document_service():
     """Dependency для получения document service - СИНХРОННАЯ"""
     service = _init_document_service_sync()
     
-    # Запускаем background tasks если еще не запущены
     if not _background_loading_started:
         _start_all_background_tasks()
     
@@ -646,7 +631,6 @@ def get_scraper_service():
     """Dependency для получения scraper service - СИНХРОННАЯ"""
     service = _init_scraper_service_sync()
     
-    # Запускаем background tasks если еще не запущены
     if not _background_loading_started:
         _start_all_background_tasks()
     
@@ -656,7 +640,6 @@ def get_llm_service():
     """Dependency для получения LLM service - СИНХРОННАЯ"""
     service = _init_llm_service_sync()
     
-    # Запускаем background tasks если еще не запущены
     if not _background_loading_started:
         _start_all_background_tasks()
     
@@ -675,12 +658,13 @@ def get_services_status():
         "environment": "hf_spaces" if os.getenv("SPACE_ID") else "local",
         "demo_mode": not LLM_ENABLED,
         "lazy_loading": True,
-        "gptq_model": "TheBloke/Llama-2-7B-Chat-GPTQ",
+        "llm_backend": "llamacpp",  # ОБНОВЛЕНО
+        "target_model": "TheBloke/Llama-2-7B-Chat-GGUF",  # ОБНОВЛЕНО
         "background_loading": _background_loading_started,
         "background_tasks": {
             "chromadb_started": "chromadb" in _background_tasks,
             "scraper_started": "scraper" in _background_tasks,
-            "gptq_started": "gptq" in _background_tasks
+            "llamacpp_started": "llamacpp" in _background_tasks  # ОБНОВЛЕНО
         },
         "initialization_status": {
             "document_service": _document_service_initialized,
@@ -690,28 +674,29 @@ def get_services_status():
         "real_features": {
             "vector_search": CHROMADB_ENABLED,
             "web_scraping": _scraper_initialized and not isinstance(scraper, HFSpacesFallbackScraperService),
-            "ai_responses": LLM_ENABLED
+            "ai_responses": LLM_ENABLED,
+            "stable_inference": True,  # НОВОЕ
+            "timeout_protection": True  # НОВОЕ
         },
-        "async_fixed": True  # Индикатор что async ошибка исправлена
+        "llamacpp_migration": True  # НОВОЕ: Индикатор миграции
     }
 
 # ====================================
-# УБИРАЕМ АСИНХРОННУЮ ИНИЦИАЛИЗАЦИЮ
+# СОВМЕСТИМОСТЬ
 # ====================================
 
 async def init_services():
-    """Упрощенная функция для совместимости - НЕ ВЫЗЫВАЕТСЯ"""
-    logger.info("🚀 HF Spaces: Using sync initialization with background loading")
+    """Упрощенная функция для совместимости"""
+    logger.info("🚀 HF Spaces: Using sync initialization with LlamaCpp backend")
     logger.info("📦 Services will initialize on first request + background tasks")
     
-    # Просто помечаем что система готова
     global SERVICES_AVAILABLE
     SERVICES_AVAILABLE = True
     
-    logger.info("✅ Sync initialization ready with async fixes")
+    logger.info("✅ Sync initialization ready with LlamaCpp migration")
 
 # ====================================
-# НОВЫЕ ФУНКЦИИ ДЛЯ МОНИТОРИНГА
+# ФУНКЦИИ ДЛЯ МОНИТОРИНГА
 # ====================================
 
 def get_background_tasks_status():
@@ -740,16 +725,17 @@ def get_background_tasks_status():
         "background_loading_started": _background_loading_started,
         "total_tasks": len(_background_tasks),
         "tasks": status,
-        "async_fixed": True
+        "llamacpp_migration": True,
+        "stable_inference": True
     }
 
 def force_background_init():
     """Принудительно запускает background инициализацию"""
     _start_all_background_tasks()
     return {
-        "message": "Background initialization started",
+        "message": "Background initialization started with LlamaCpp",
         "tasks_started": len(_background_tasks),
-        "async_fixed": True
+        "llamacpp_migration": True
     }
 
 # ====================================
