@@ -1,4 +1,4 @@
-# backend/services/chroma_service.py - КРИТИЧЕСКИЕ ИСПРАВЛЕНИЯ для таймаутов и async
+# backend/services/chroma_service.py - КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ async ошибки
 import chromadb
 from chromadb.config import Settings
 from chromadb.utils import embedding_functions
@@ -23,7 +23,7 @@ class ProcessedDocument:
     chunks: List[str]
 
 class ChromaDBService:
-    """Сервис для работы с ChromaDB векторной базой данных С ТАЙМАУТАМИ"""
+    """Сервис для работы с ChromaDB векторной базой данных С ИСПРАВЛЕННЫМ ASYNC"""
     
     def __init__(self, persist_directory: str = "./chromadb_data"):
         self.persist_directory = persist_directory
@@ -55,21 +55,19 @@ class ChromaDBService:
     async def add_document(self, document: ProcessedDocument) -> bool:
         """Добавляет документ в ChromaDB С ТАЙМАУТОМ"""
         try:
-            # ИСПРАВЛЕНИЕ: Оборачиваем в asyncio.wait_for для таймаута
-            return await asyncio.wait_for(
-                self._add_document_sync(document),
-                timeout=self.operation_timeout
+            # ИСПРАВЛЕНИЕ: Используем run_in_executor для синхронной операции
+            return await asyncio.get_event_loop().run_in_executor(
+                None, 
+                self._add_document_sync, 
+                document
             )
-        except asyncio.TimeoutError:
-            logger.error(f"❌ Document addition timeout after {self.operation_timeout}s")
-            return False
         except Exception as e:
             logger.error(f"❌ Error adding document: {e}")
             return False
     
-    async def _add_document_sync(self, document: ProcessedDocument) -> bool:
+    def _add_document_sync(self, document: ProcessedDocument) -> bool:
         """Синхронная версия добавления документа"""
-        def _sync_add():
+        try:
             # Проверяем существование документа
             existing_docs = self.collection.get(
                 ids=[document.id],
@@ -152,33 +150,31 @@ class ChromaDBService:
                 logger.info(f"✅ Added single document {document.filename}")
             
             return True
-        
-        # Запускаем в executor для неблокирующего выполнения
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, _sync_add)
+            
+        except Exception as e:
+            logger.error(f"Error adding document sync: {e}")
+            return False
     
     async def search_documents(self, query: str, n_results: int = 5, 
                              category: str = None, min_relevance: float = 0.3, **filters) -> List[Dict]:
         """
-        ИСПРАВЛЕННЫЙ поиск документов с таймаутом и правильной async обработкой
+        КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Правильный async поиск документов
         """
         try:
-            # КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Используем asyncio.wait_for для таймаута
-            return await asyncio.wait_for(
-                self._search_documents_sync(query, n_results, category, min_relevance, **filters),
-                timeout=self.search_timeout
+            # ИСПРАВЛЕНИЕ: Используем run_in_executor для синхронной ChromaDB операции
+            return await asyncio.get_event_loop().run_in_executor(
+                None,
+                self._search_documents_sync,
+                query, n_results, category, min_relevance, filters
             )
-        except asyncio.TimeoutError:
-            logger.error(f"❌ Search timeout after {self.search_timeout}s for query: '{query}'")
-            return []
         except Exception as e:
             logger.error(f"❌ Search error: {e}")
             return []
     
-    async def _search_documents_sync(self, query: str, n_results: int, 
-                                   category: str, min_relevance: float, **filters) -> List[Dict]:
-        """Синхронная версия поиска документов"""
-        def _sync_search():
+    def _search_documents_sync(self, query: str, n_results: int, 
+                              category: str, min_relevance: float, filters: dict) -> List[Dict]:
+        """ИСПРАВЛЕННАЯ синхронная версия поиска документов"""
+        try:
             # Подготавливаем фильтры
             where_filter = {}
             
@@ -193,7 +189,7 @@ class ChromaDBService:
             # Увеличиваем количество результатов для лучшей фильтрации
             search_limit = min(n_results * 3, 20)
             
-            # ИСПРАВЛЕНО: Ищем во ВСЕХ документах и чанках
+            # ИСПРАВЛЕНО: Синхронный вызов ChromaDB query
             results = self.collection.query(
                 query_texts=[query],
                 n_results=search_limit,
@@ -285,10 +281,10 @@ class ChromaDBService:
                 logger.info(f"No relevant results found for '{query}' with min_relevance={min_relevance}")
             
             return formatted_results
-        
-        # ИСПРАВЛЕНИЕ: Запускаем синхронный код в executor
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, _sync_search)
+            
+        except Exception as e:
+            logger.error(f"Sync search error: {e}")
+            return []
     
     def _find_best_context(self, content: str, query: str, max_length: int = 400) -> str:
         """Находит наиболее релевантную часть документа для показа в результатах"""
@@ -335,44 +331,31 @@ class ChromaDBService:
         return context.strip()
     
     async def get_document_count(self) -> int:
-        """Возвращает количество документов в коллекции С ТАЙМАУТОМ"""
+        """Возвращает количество документов в коллекции"""
         try:
-            return await asyncio.wait_for(
-                self._get_document_count_sync(),
-                timeout=5.0  # 5 секунд на подсчет
+            return await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: self.collection.count()
             )
-        except asyncio.TimeoutError:
-            logger.error("❌ Document count timeout")
-            return 0
         except Exception as e:
             logger.error(f"Error getting document count: {str(e)}")
             return 0
     
-    async def _get_document_count_sync(self) -> int:
-        """Синхронная версия подсчета документов"""
-        def _sync_count():
-            return self.collection.count()
-        
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, _sync_count)
-    
     async def delete_document(self, document_id: str) -> bool:
-        """Удаляет документ и все его чанки С ТАЙМАУТОМ"""
+        """Удаляет документ и все его чанки"""
         try:
-            return await asyncio.wait_for(
-                self._delete_document_sync(document_id),
-                timeout=self.operation_timeout
+            return await asyncio.get_event_loop().run_in_executor(
+                None,
+                self._delete_document_sync,
+                document_id
             )
-        except asyncio.TimeoutError:
-            logger.error(f"❌ Document deletion timeout for {document_id}")
-            return False
         except Exception as e:
             logger.error(f"Error deleting document: {str(e)}")
             return False
     
-    async def _delete_document_sync(self, document_id: str) -> bool:
+    def _delete_document_sync(self, document_id: str) -> bool:
         """Синхронная версия удаления документа"""
-        def _sync_delete():
+        try:
             # Получаем все связанные документы и чанки
             all_related_docs = self.collection.get(
                 where={"parent_document_id": document_id},
@@ -413,27 +396,25 @@ class ChromaDBService:
             else:
                 logger.warning(f"Document {document_id} not found for deletion")
                 return False
-        
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, _sync_delete)
+                
+        except Exception as e:
+            logger.error(f"Delete document sync error: {e}")
+            return False
     
     async def get_all_documents(self) -> List[Dict]:
-        """Получает все основные документы С ТАЙМАУТОМ"""
+        """Получает все основные документы"""
         try:
-            return await asyncio.wait_for(
-                self._get_all_documents_sync(),
-                timeout=15.0  # 15 секунд на получение всех документов
+            return await asyncio.get_event_loop().run_in_executor(
+                None,
+                self._get_all_documents_sync
             )
-        except asyncio.TimeoutError:
-            logger.error("❌ Get all documents timeout")
-            return []
         except Exception as e:
             logger.error(f"Error getting all documents: {str(e)}")
             return []
     
-    async def _get_all_documents_sync(self) -> List[Dict]:
+    def _get_all_documents_sync(self) -> List[Dict]:
         """Синхронная версия получения всех документов"""
-        def _sync_get_all():
+        try:
             # Более надежный запрос основных документов
             results = self.collection.get(
                 where={"is_chunk": False},
@@ -471,25 +452,18 @@ class ChromaDBService:
             
             logger.info(f"Retrieved {len(documents)} unique documents")
             return documents
-        
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, _sync_get_all)
+            
+        except Exception as e:
+            logger.error(f"Get all documents sync error: {e}")
+            return []
     
     async def get_stats(self) -> Dict:
-        """Получает статистику базы данных С ТАЙМАУТОМ"""
+        """Получает статистику базы данных"""
         try:
-            return await asyncio.wait_for(
-                self._get_stats_sync(),
-                timeout=10.0  # 10 секунд на статистику
+            return await asyncio.get_event_loop().run_in_executor(
+                None,
+                self._get_stats_sync
             )
-        except asyncio.TimeoutError:
-            logger.error("❌ Get stats timeout")
-            return {
-                "total_documents": 0,
-                "categories": [],
-                "database_type": "ChromaDB",
-                "error": "Timeout getting stats"
-            }
         except Exception as e:
             logger.error(f"Error getting stats: {str(e)}")
             return {
@@ -499,9 +473,9 @@ class ChromaDBService:
                 "error": str(e)
             }
     
-    async def _get_stats_sync(self) -> Dict:
+    def _get_stats_sync(self) -> Dict:
         """Синхронная версия получения статистики"""
-        def _sync_stats():
+        try:
             total_count = self.collection.count()
             
             # Получаем уникальные категории из основных документов
@@ -531,28 +505,31 @@ class ChromaDBService:
                 "total_chunks": total_count,
                 "unique_documents": unique_docs
             }
-        
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, _sync_stats)
-
+            
+        except Exception as e:
+            logger.error(f"Get stats sync error: {e}")
+            return {
+                "total_documents": 0,
+                "categories": [],
+                "database_type": "ChromaDB",
+                "error": str(e)
+            }
 
     async def update_document(self, document_id: str, new_content: str = None, new_metadata: Dict = None) -> bool:
-        """Обновляет документ С ТАЙМАУТОМ"""
+        """Обновляет документ"""
         try:
-            return await asyncio.wait_for(
-                self._update_document_sync(document_id, new_content, new_metadata),
-                timeout=self.operation_timeout
+            return await asyncio.get_event_loop().run_in_executor(
+                None,
+                self._update_document_sync,
+                document_id, new_content, new_metadata
             )
-        except asyncio.TimeoutError:
-            logger.error(f"❌ Document update timeout for {document_id}")
-            return False
         except Exception as e:
             logger.error(f"Error updating document: {str(e)}")
             return False
     
-    async def _update_document_sync(self, document_id: str, new_content: str, new_metadata: Dict) -> bool:
+    def _update_document_sync(self, document_id: str, new_content: str, new_metadata: Dict) -> bool:
         """Синхронная версия обновления документа"""
-        def _sync_update():
+        try:
             # ChromaDB не поддерживает прямое обновление, поэтому удаляем и добавляем заново
             if new_content or new_metadata:
                 # Получаем текущий документ
@@ -585,115 +562,39 @@ class ChromaDBService:
                 return True
             
             return False
-        
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, _sync_update)
-    
-    async def cleanup_duplicates(self) -> Dict:
-        """Очищает дубликаты в базе данных С ТАЙМАУТОМ"""
-        try:
-            return await asyncio.wait_for(
-                self._cleanup_duplicates_sync(),
-                timeout=60.0  # 1 минута на очистку дубликатов
-            )
-        except asyncio.TimeoutError:
-            logger.error("❌ Cleanup duplicates timeout")
-            return {"removed": 0, "error": "Timeout during cleanup"}
+            
         except Exception as e:
-            logger.error(f"Error during cleanup: {e}")
-            return {"removed": 0, "error": str(e)}
-    
-    async def _cleanup_duplicates_sync(self) -> Dict:
-        """Синхронная версия очистки дубликатов"""
-        def _sync_cleanup():
-            logger.info("🧹 Starting duplicate cleanup...")
-            
-            # Получаем все документы
-            all_docs = self.collection.get(include=["metadatas"])
-            
-            if not all_docs["ids"]:
-                return {"removed": 0, "message": "No documents found"}
-            
-            # Группируем по parent_document_id
-            docs_by_parent = {}
-            duplicates_to_remove = []
-            
-            for i, doc_id in enumerate(all_docs["ids"]):
-                metadata = all_docs["metadatas"][i]
-                parent_id = metadata.get("parent_document_id", doc_id)
-                is_chunk = metadata.get("is_chunk", False)
-                
-                if parent_id not in docs_by_parent:
-                    docs_by_parent[parent_id] = []
-                
-                docs_by_parent[parent_id].append({
-                    "id": doc_id,
-                    "is_chunk": is_chunk,
-                    "metadata": metadata
-                })
-            
-            # Находим дубликаты основных документов
-            for parent_id, docs in docs_by_parent.items():
-                main_docs = [d for d in docs if not d["is_chunk"]]
-                
-                if len(main_docs) > 1:
-                    # Оставляем самый новый, удаляем остальные
-                    main_docs.sort(key=lambda x: x["metadata"].get("added_at", 0), reverse=True)
-                    for duplicate in main_docs[1:]:
-                        duplicates_to_remove.append(duplicate["id"])
-                        logger.debug(f"Marking duplicate main document for removal: {duplicate['id']}")
-            
-            # Удаляем дубликаты
-            removed_count = 0
-            for doc_id in duplicates_to_remove:
-                try:
-                    self.collection.delete(ids=[doc_id])
-                    removed_count += 1
-                    logger.debug(f"Removed duplicate: {doc_id}")
-                except Exception as e:
-                    logger.warning(f"Failed to remove duplicate {doc_id}: {e}")
-            
-            logger.info(f"🧹 Cleanup completed: removed {removed_count} duplicates")
-            
-            return {
-                "removed": removed_count,
-                "message": f"Successfully removed {removed_count} duplicate documents"
-            }
-        
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, _sync_cleanup)
+            logger.error(f"Update document sync error: {e}")
+            return False
 
 # ====================================
-# КЛАССЫ ДЛЯ ОБРАТНОЙ СОВМЕСТИМОСТИ С ТАЙМАУТАМИ
+# ИСПРАВЛЕННЫЕ КЛАССЫ ДЛЯ ОБРАТНОЙ СОВМЕСТИМОСТИ
 # ====================================
 
 class DocumentProcessor:
-    """Обработчик документов С ТАЙМАУТАМИ"""
+    """Обработчик документов"""
     
     def __init__(self):
         self.supported_formats = {
             '.txt': self._process_txt,
             '.md': self._process_txt,
         }
-        self.processing_timeout = 30.0  # 30 секунд на обработку файла
     
     async def process_file(self, file_path: str, category: str = "general") -> Optional[ProcessedDocument]:
-        """Обрабатывает файл и извлекает текст С ТАЙМАУТОМ"""
+        """Обрабатывает файл и извлекает текст"""
         try:
-            return await asyncio.wait_for(
-                self._process_file_sync(file_path, category),
-                timeout=self.processing_timeout
+            return await asyncio.get_event_loop().run_in_executor(
+                None,
+                self._process_file_sync,
+                file_path, category
             )
-        except asyncio.TimeoutError:
-            logger.error(f"❌ File processing timeout for {file_path}")
-            return None
         except Exception as e:
             logger.error(f"Error processing file {file_path}: {str(e)}")
             return None
     
-    async def _process_file_sync(self, file_path: str, category: str) -> Optional[ProcessedDocument]:
+    def _process_file_sync(self, file_path: str, category: str) -> Optional[ProcessedDocument]:
         """Синхронная версия обработки файла"""
-        def _sync_process():
+        try:
             from pathlib import Path
             
             file_path_obj = Path(file_path)
@@ -728,9 +629,10 @@ class DocumentProcessor:
                 category=category,
                 chunks=chunks
             )
-        
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, _sync_process)
+            
+        except Exception as e:
+            logger.error(f"Process file sync error: {e}")
+            return None
     
     def _process_txt_sync(self, file_path) -> str:
         """Синхронная обработка текстовых файлов"""
@@ -795,74 +697,44 @@ class DocumentProcessor:
         return f"{filename}_{content_hash}"
 
 class DocumentService:
-    """Основной сервис документов с ChromaDB И ТАЙМАУТАМИ"""
+    """Основной сервис документов с исправленным ChromaDB"""
     
     def __init__(self, db_path: str = "./chromadb_data"):
         self.processor = DocumentProcessor()
         self.vector_db = ChromaDBService(db_path)
-        
-        # Глобальные таймауты для сервиса
-        self.service_timeout = 60.0  # 1 минута на операции сервиса
     
     async def process_and_store_file(self, file_path: str, category: str = "general") -> bool:
-        """Обрабатывает файл и сохраняет в ChromaDB С ТАЙМАУТОМ"""
+        """Обрабатывает файл и сохраняет в ChromaDB"""
         try:
-            return await asyncio.wait_for(
-                self._process_and_store_file_async(file_path, category),
-                timeout=self.service_timeout
-            )
-        except asyncio.TimeoutError:
-            logger.error(f"❌ Process and store timeout for {file_path}")
-            return False
+            document = await self.processor.process_file(file_path, category)
+            
+            if not document:
+                return False
+            
+            return await self.vector_db.add_document(document)
         except Exception as e:
             logger.error(f"❌ Process and store error: {e}")
             return False
     
-    async def _process_and_store_file_async(self, file_path: str, category: str) -> bool:
-        """Асинхронная версия обработки и сохранения"""
-        document = await self.processor.process_file(file_path, category)
-        
-        if not document:
-            return False
-        
-        return await self.vector_db.add_document(document)
-    
     async def search(self, query: str, category: str = None, limit: int = 5, min_relevance: float = 0.3) -> List[Dict]:
         """
-        Поиск документов с улучшенной фильтрацией И ТАЙМАУТОМ
+        ИСПРАВЛЕННЫЙ поиск документов
         """
         try:
-            return await asyncio.wait_for(
-                self.vector_db.search_documents(
-                    query=query, 
-                    n_results=limit, 
-                    category=category,
-                    min_relevance=min_relevance
-                ),
-                timeout=10.0  # 10 секунд на поиск
+            return await self.vector_db.search_documents(
+                query=query, 
+                n_results=limit, 
+                category=category,
+                min_relevance=min_relevance
             )
-        except asyncio.TimeoutError:
-            logger.error(f"❌ Search timeout for query: '{query}'")
-            return []
         except Exception as e:
             logger.error(f"❌ Search error: {e}")
             return []
     
     async def get_stats(self) -> Dict:
-        """Получает статистику С ТАЙМАУТОМ"""
+        """Получает статистику"""
         try:
-            return await asyncio.wait_for(
-                self.vector_db.get_stats(),
-                timeout=15.0  # 15 секунд на статистику
-            )
-        except asyncio.TimeoutError:
-            logger.error("❌ Get stats timeout")
-            return {
-                "total_documents": 0,
-                "categories": [],
-                "database_type": "ChromaDB",
-                "error": "Timeout getting stats"
-            }
+            return await self.vector_db.get_stats()
         except Exception as e:
             logger.error(f"❌ Get stats error: {e}")
             return {
@@ -873,186 +745,25 @@ class DocumentService:
             }
     
     async def get_all_documents(self) -> List[Dict]:
-        """Получает все документы С ТАЙМАУТОМ"""
+        """Получает все документы"""
         try:
-            return await asyncio.wait_for(
-                self.vector_db.get_all_documents(),
-                timeout=20.0  # 20 секунд на получение всех документов
-            )
-        except asyncio.TimeoutError:
-            logger.error("❌ Get all documents timeout")
-            return []
+            return await self.vector_db.get_all_documents()
         except Exception as e:
             logger.error(f"❌ Get all documents error: {e}")
             return []
     
     async def delete_document(self, document_id: str) -> bool:
-        """Удаляет документ С ТАЙМАУТОМ"""
+        """Удаляет документ"""
         try:
-            return await asyncio.wait_for(
-                self.vector_db.delete_document(document_id),
-                timeout=30.0  # 30 секунд на удаление
-            )
-        except asyncio.TimeoutError:
-            logger.error(f"❌ Delete document timeout for {document_id}")
-            return False
+            return await self.vector_db.delete_document(document_id)
         except Exception as e:
             logger.error(f"❌ Delete document error: {e}")
             return False
     
-    async def cleanup_duplicates(self) -> Dict:
-        """Очищает дубликаты С ТАЙМАУТОМ"""
-        try:
-            return await asyncio.wait_for(
-                self.vector_db.cleanup_duplicates(),
-                timeout=90.0  # 1.5 минуты на очистку дубликатов
-            )
-        except asyncio.TimeoutError:
-            logger.error("❌ Cleanup duplicates timeout")
-            return {
-                "removed": 0,
-                "error": "Cleanup timeout",
-                "message": "Cleanup operation timed out"
-            }
-        except Exception as e:
-            logger.error(f"❌ Cleanup error: {e}")
-            return {
-                "removed": 0,
-                "error": str(e),
-                "message": "Cleanup operation failed"
-            }
-    
     async def update_document(self, document_id: str, new_content: str = None, new_metadata: Dict = None) -> bool:
-        """Обновляет документ С ТАЙМАУТОМ"""
+        """Обновляет документ"""
         try:
-            return await asyncio.wait_for(
-                self.vector_db.update_document(document_id, new_content, new_metadata),
-                timeout=self.service_timeout
-            )
-        except asyncio.TimeoutError:
-            logger.error(f"❌ Update document timeout for {document_id}")
-            return False
+            return await self.vector_db.update_document(document_id, new_content, new_metadata)
         except Exception as e:
             logger.error(f"❌ Update document error: {e}")
             return False
-
-# ====================================
-# ФУНКЦИИ ДЛЯ ДИАГНОСТИКИ ТАЙМАУТОВ
-# ====================================
-
-async def diagnose_chromadb_performance() -> Dict[str, Any]:
-    """Диагностирует производительность ChromaDB"""
-    
-    diagnostics = {
-        "timestamp": time.time(),
-        "tests": {},
-        "recommendations": []
-    }
-    
-    try:
-        # Создаем тестовый сервис
-        test_service = ChromaDBService("./test_chromadb")
-        
-        # Тест 1: Подсчет документов
-        count_start = time.time()
-        try:
-            count = await asyncio.wait_for(test_service.get_document_count(), timeout=5.0)
-            diagnostics["tests"]["document_count"] = {
-                "status": "success",
-                "time": round(time.time() - count_start, 3),
-                "count": count
-            }
-        except asyncio.TimeoutError:
-            diagnostics["tests"]["document_count"] = {
-                "status": "timeout",
-                "time": round(time.time() - count_start, 3)
-            }
-            diagnostics["recommendations"].append("Document count operation is slow - check ChromaDB health")
-        
-        # Тест 2: Простой поиск
-        search_start = time.time()
-        try:
-            results = await asyncio.wait_for(
-                test_service.search_documents("test", n_results=1),
-                timeout=10.0
-            )
-            diagnostics["tests"]["simple_search"] = {
-                "status": "success",
-                "time": round(time.time() - search_start, 3),
-                "results": len(results)
-            }
-        except asyncio.TimeoutError:
-            diagnostics["tests"]["simple_search"] = {
-                "status": "timeout", 
-                "time": round(time.time() - search_start, 3)
-            }
-            diagnostics["recommendations"].append("Search operations are timing out - consider rebuilding ChromaDB")
-        
-        # Тест 3: Получение статистики
-        stats_start = time.time()
-        try:
-            stats = await asyncio.wait_for(test_service.get_stats(), timeout=10.0)
-            diagnostics["tests"]["get_stats"] = {
-                "status": "success",
-                "time": round(time.time() - stats_start, 3),
-                "stats": stats
-            }
-        except asyncio.TimeoutError:
-            diagnostics["tests"]["get_stats"] = {
-                "status": "timeout",
-                "time": round(time.time() - stats_start, 3)
-            }
-            diagnostics["recommendations"].append("Stats retrieval is slow - ChromaDB may be corrupted")
-        
-        # Общие рекомендации
-        if not diagnostics["recommendations"]:
-            diagnostics["recommendations"].append("ChromaDB performance is acceptable")
-        
-        return diagnostics
-        
-    except Exception as e:
-        diagnostics["error"] = str(e)
-        diagnostics["recommendations"].append("Failed to run diagnostics - check ChromaDB installation")
-        return diagnostics
-
-async def test_timeout_behavior(operation: str, timeout_seconds: float = 5.0) -> Dict[str, Any]:
-    """Тестирует поведение таймаутов для конкретной операции"""
-    
-    test_start = time.time()
-    
-    try:
-        if operation == "long_search":
-            # Симулируем долгий поиск
-            await asyncio.wait_for(
-                asyncio.sleep(timeout_seconds + 1),  # Превышаем таймаут
-                timeout=timeout_seconds
-            )
-        elif operation == "normal_search":
-            # Симулируем нормальный поиск
-            await asyncio.wait_for(
-                asyncio.sleep(0.1),
-                timeout=timeout_seconds
-            )
-        
-        return {
-            "operation": operation,
-            "status": "completed",
-            "time": round(time.time() - test_start, 3),
-            "timeout_limit": timeout_seconds
-        }
-        
-    except asyncio.TimeoutError:
-        return {
-            "operation": operation,
-            "status": "timeout",
-            "time": round(time.time() - test_start, 3),
-            "timeout_limit": timeout_seconds,
-            "message": f"Operation correctly timed out after {timeout_seconds}s"
-        }
-    except Exception as e:
-        return {
-            "operation": operation,
-            "status": "error",
-            "time": round(time.time() - test_start, 3),
-            "error": str(e)
-        }
