@@ -294,14 +294,14 @@ def _is_suspicious_request(request: Request) -> bool:
     return False
 
 def _add_security_headers(response: Response):
-    """Добавляет security заголовки к ответу"""
+    """Добавляет security заголовки к ответу (исправленные для Swagger UI)"""
     security_headers = {
         "X-Content-Type-Options": "nosniff",
-        "X-Frame-Options": "DENY",
+        "X-Frame-Options": "DENY", 
         "X-XSS-Protection": "1; mode=block",
-        "Strict-Transport-Security": "max-age=31536000; includeSubDomains",
         "Referrer-Policy": "strict-origin-when-cross-origin",
-        "Content-Security-Policy": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';",
+        # УБИРАЕМ строгий CSP для работы Swagger UI
+        # "Content-Security-Policy": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';"
     }
     
     for header, value in security_headers.items():
