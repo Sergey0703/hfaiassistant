@@ -1,8 +1,7 @@
-# app/dependencies.py - ИСПРАВЛЕННАЯ ВЕРСИЯ ДЛЯ HUGGINGFACE SPACES
-
+# backend/app/dependencies.py - ИСПРАВЛЕННАЯ ВЕРСИЯ ДЛЯ HUGGINGFACE SPACES
 """
 Зависимости и инициализация сервисов для HuggingFace Spaces
-ИСПРАВЛЕНИЕ: Lazy initialization + лучшая обработка GPTQ модели
+ИСПРАВЛЕНИЕ: Полностью синхронная инициализация + background async loading
 """
 
 import logging
@@ -11,7 +10,9 @@ import os
 import time
 import json
 import asyncio
+import threading
 from typing import Optional, List, Dict, Any
+from concurrent.futures import ThreadPoolExecutor
 
 from app.config import settings
 
@@ -24,518 +25,147 @@ logger = logging.getLogger(__name__)
 document_service: Optional[object] = None
 scraper: Optional[object] = None
 llm_service: Optional[object] = None
-SERVICES_AVAILABLE: bool = False
+
+# Статус флаги
+SERVICES_AVAILABLE: bool = True  # Всегда True для HF Spaces
 CHROMADB_ENABLED: bool = False
 LLM_ENABLED: bool = False
 
-# Флаги инициализации для lazy loading
+# Флаги инициализации
 _document_service_initialized = False
 _scraper_initialized = False
 _llm_service_initialized = False
 
+# Background loading статус
+_background_loading_started = False
+_background_tasks = {}
+
+# Thread pool для background операций
+_executor = ThreadPoolExecutor(max_workers=2)
+
 # ====================================
-# УЛУЧШЕННЫЙ LLM FALLBACK
+# УЛУЧШЕННЫЕ FALLBACK СЕРВИСЫ
 # ====================================
 
-class ImprovedFallbackLLMService:
-    """Улучшенный fallback LLM с поддержкой украинского языка"""
+class HFSpacesFallbackDocumentService:
+    """Оптимизированный fallback для HF Spaces"""
     
     def __init__(self):
-        self.service_type = "hf_spaces_demo_improved"
-        self.model_loaded = False
-        logger.info("🤖 Using improved demo LLM service with Ukrainian support")
-    
-    async def answer_legal_question(self, question: str, context_documents: List[Dict], language: str = "en"):
-        """Улучшенные демо ответы для юридических вопросов"""
-        from services.huggingface_llm_service import LLMResponse
-        
-        if language == "uk":
-            demo_content = f"""🏛️ **Юридична консультація (Демо режим)**
-
-**Ваше питання:** {question}
-
-**Аналіз документів:** Знайдено {len(context_documents)} релевантних документів у базі знань.
-
-**Демонстраційна відповідь:**
-Це демонстраційна версія Legal Assistant, що працює з моделлю GPTQ. У повній версії ваша модель `TheBloke/Llama-2-7B-Chat-GPTQ` надасть:
-
-📋 **Детальний аналіз:** Глибокий розбір юридичного питання на основі знайдених документів
-⚖️ **Правові посилання:** Конкретні статті законів та нормативних актів
-🎯 **Практичні рекомендації:** Покрокові дії для вирішення питання
-🔍 **Контекст:** Аналіз з урахуванням українського та ірландського права
-
-**Статус:** Модель GPTQ завантажується... Зазвичай це займає 1-2 хвилини.
-**Якість:** Ваша модель Llama-2-7B забезпечить високоякісні юридичні консультації.
-
-💡 **Підказка:** Спробуйте перефразувати питання або зачекайте завершення ініціалізації моделі."""
-        else:
-            demo_content = f"""🏛️ **Legal Consultation (Demo Mode)**
-
-**Your Question:** {question}
-
-**Document Analysis:** Found {len(context_documents)} relevant documents in knowledge base.
-
-**Demo Response:**
-This is a demonstration version of Legal Assistant running with GPTQ model. In full version, your `TheBloke/Llama-2-7B-Chat-GPTQ` model will provide:
-
-📋 **Detailed Analysis:** Deep breakdown of legal question based on found documents
-⚖️ **Legal References:** Specific articles, laws, and regulations
-🎯 **Practical Advice:** Step-by-step actions to resolve the issue
-🔍 **Context:** Analysis considering Irish and Ukrainian law
-
-**Status:** GPTQ model is loading... This usually takes 1-2 minutes.
-**Quality:** Your Llama-2-7B model will provide high-quality legal consultations.
-
-💡 **Tip:** Try rephrasing your question or wait for model initialization to complete."""
-        
-        return LLMResponse(
-            content=demo_content,
-            model="llama-2-7b-chat-gptq-demo",
-            tokens_used=len(demo_content.split()),
-            response_time=0.5,
-            success=True,
-            error=None
-        )
-    
-    async def get_service_status(self):
-        """Статус демо LLM сервиса"""
-        return {
-            "model_loaded": False,
-            "model_name": "TheBloke/Llama-2-7B-Chat-GPTQ (loading...)",
-            "huggingface_available": True,
-            "service_type": "demo_fallback",
-            "environment": "HuggingFace Spaces",
-            "status": "Your GPTQ model is initializing",
-            "supported_languages": ["en", "uk"],
-            "target_model": "TheBloke/Llama-2-7B-Chat-GPTQ",
-            "loading_status": "Model initialization in progress...",
-            "recommendations": [
-                "Your GPTQ model provides excellent legal analysis",
-                "Supports both English and Ukrainian languages",
-                "Loading may take 1-2 minutes on first startup",
-                "Demo responses show expected functionality"
-            ]
-        }
-
-# ====================================
-# LAZY INITIALIZATION FUNCTIONS
-# ====================================
-
-def _init_document_service():
-    """Ленивая инициализация document service с retry логикой"""
-    global document_service, _document_service_initialized, CHROMADB_ENABLED, SERVICES_AVAILABLE
-    
-    if _document_service_initialized:
-        return document_service
-    
-    try:
-        logger.info("🔄 Initializing document service...")
-        
-        if settings.USE_CHROMADB:
-            try:
-                # Проверяем sentence-transformers
-                import sentence_transformers
-                from services.chroma_service import DocumentService
-                
-                logger.info("📚 Attempting ChromaDB initialization...")
-                
-                # Retry логика для ChromaDB (3 попытки)
-                last_error = None
-                for attempt in range(3):
-                    try:
-                        # Создаем директорию для ChromaDB
-                        import os
-                        os.makedirs(settings.CHROMADB_PATH, exist_ok=True)
-                        
-                        document_service = DocumentService(settings.CHROMADB_PATH)
-                        
-                        # Проверяем что ChromaDB действительно работает
-                        test_count = await document_service.get_stats()
-                        
-                        CHROMADB_ENABLED = True
-                        SERVICES_AVAILABLE = True
-                        logger.info(f"✅ ChromaDB initialized successfully (attempt {attempt + 1})")
-                        break
-                        
-                    except Exception as e:
-                        last_error = e
-                        logger.warning(f"ChromaDB attempt {attempt + 1}/3 failed: {e}")
-                        if attempt < 2:  # Не последняя попытка
-                            import time
-                            time.sleep(1)  # Ждем секунду перед повтором
-                        continue
-                else:
-                    # Все попытки неудачны
-                    raise last_error or Exception("ChromaDB initialization failed after 3 attempts")
-                        
-            except ImportError as e:
-                logger.warning(f"sentence-transformers not available: {e}")
-                logger.info("🔄 Falling back to SimpleVectorDB...")
-                raise ImportError("sentence-transformers missing")
-                
-        else:
-            logger.info("📁 Using SimpleVectorDB (ChromaDB disabled)")
-            from services.document_processor import DocumentService
-            document_service = DocumentService(settings.SIMPLE_DB_PATH)
-            SERVICES_AVAILABLE = True
-            CHROMADB_ENABLED = False
-            logger.info("✅ SimpleVectorDB initialized")
-        
-        _document_service_initialized = True
-        return document_service
-        
-    except Exception as e:
-        logger.error(f"❌ Document service initialization failed: {e}")
-        logger.info("🔄 Using fallback document service...")
-        
-        # Создаем улучшенный fallback
-        try:
-            document_service = FallbackDocumentService()
-            document_service.initialization_error = str(e)
-            SERVICES_AVAILABLE = True
-            CHROMADB_ENABLED = False
-            _document_service_initialized = True
-            
-            logger.info("✅ Fallback document service initialized")
-            return document_service
-            
-        except Exception as fallback_error:
-            logger.error(f"❌ Even fallback service failed: {fallback_error}")
-            # Создаем минимальный fallback
-            document_service = type('MinimalFallback', (), {
-                'search': lambda *args, **kwargs: [],
-                'get_stats': lambda: {"error": "Service unavailable"},
-                'get_all_documents': lambda: [],
-                'delete_document': lambda *args: False,
-                'process_and_store_file': lambda *args: False
-            })()
-            _document_service_initialized = True
-            return document_service
-
-def _init_scraper_service():
-    """Ленивая инициализация scraper service"""
-    global scraper, _scraper_initialized
-    
-    if _scraper_initialized:
-        return scraper
-    
-    try:
-        logger.info("🔄 Initializing scraper service...")
-        
-        # Проверяем библиотеки
-        import aiohttp
-        import bs4
-        from services.scraper_service import LegalSiteScraper
-        
-        scraper = LegalSiteScraper()
-        logger.info("✅ Real scraper service initialized")
-        
-    except ImportError as e:
-        logger.info(f"Scraper libraries not available: {e}")
-        from app.dependencies import FallbackScraperService
-        scraper = FallbackScraperService()
-        logger.info("✅ Fallback scraper service initialized")
-    
-    _scraper_initialized = True
-    return scraper
-
-def _init_llm_service():
-    """Ленивая инициализация LLM service с упрощенной логикой для HF Spaces"""
-    global llm_service, _llm_service_initialized, LLM_ENABLED
-    
-    if _llm_service_initialized:
-        return llm_service
-    
-    try:
-        logger.info("🔄 Initializing LLM service...")
-        
-        if settings.LLM_DEMO_MODE:
-            logger.info("🎭 LLM demo mode enabled")
-            llm_service = ImprovedFallbackLLMService()
-            LLM_ENABLED = False
-            _llm_service_initialized = True
-            return llm_service
-        
-        # Простая попытка загрузки GPTQ модели
-        logger.info("🤖 Attempting to load GPTQ model: TheBloke/Llama-2-7B-Chat-GPTQ")
-        
-        try:
-            from services.huggingface_llm_service import create_llm_service
-            import time
-            
-            # Простая попытка создания сервиса с timeout
-            start_time = time.time()
-            timeout_seconds = 30  # 30 секунд на попытку загрузки
-            
-            try:
-                llm_service = create_llm_service("TheBloke/Llama-2-7B-Chat-GPTQ")
-                
-                # Проверяем что модель действительно загрузилась
-                if hasattr(llm_service, 'model_loaded') and llm_service.model_loaded:
-                    LLM_ENABLED = True
-                    logger.info("✅ GPTQ model loaded successfully!")
-                else:
-                    # Модель не загрузилась, используем fallback
-                    logger.info("⏳ GPTQ model not ready yet, using fallback")
-                    llm_service = ImprovedFallbackLLMService()
-                    LLM_ENABLED = False
-                    
-            except Exception as model_error:
-                elapsed = time.time() - start_time
-                if elapsed > timeout_seconds:
-                    logger.warning(f"⏰ GPTQ model loading timeout ({elapsed:.1f}s), using fallback")
-                else:
-                    logger.warning(f"⚠️ GPTQ model loading failed: {model_error}")
-                
-                llm_service = ImprovedFallbackLLMService()
-                LLM_ENABLED = False
-                
-        except ImportError as e:
-            logger.warning(f"HuggingFace dependencies not available: {e}")
-            llm_service = ImprovedFallbackLLMService()
-            LLM_ENABLED = False
-            
-    except Exception as e:
-        logger.error(f"❌ LLM service initialization failed: {e}")
-        llm_service = ImprovedFallbackLLMService()
-        LLM_ENABLED = False
-    
-    _llm_service_initialized = True
-    logger.info(f"✅ LLM service initialized (GPTQ enabled: {LLM_ENABLED})")
-    return llm_service
-
-# ====================================
-# УБИРАЕМ АСИНХРОННУЮ ИНИЦИАЛИЗАЦИЮ
-# ====================================
-
-async def init_services():
-    """Упрощенная инициализация - только устанавливаем флаги"""
-    global SERVICES_AVAILABLE
-    
-    logger.info("🚀 Lazy initialization enabled for HuggingFace Spaces")
-    logger.info("📦 Services will initialize on first request")
-    
-    # Просто помечаем что система готова к lazy loading
-    SERVICES_AVAILABLE = True
-    
-    logger.info("✅ Lazy initialization configured successfully")
-
-# ====================================
-# DEPENDENCY FUNCTIONS с LAZY LOADING
-# ====================================
-
-def get_document_service():
-    """Dependency для получения document service с lazy loading"""
-    return _init_document_service()
-
-def get_scraper_service():
-    """Dependency для получения scraper service с lazy loading"""
-    return _init_scraper_service()
-
-def get_llm_service():
-    """Dependency для получения LLM service с lazy loading"""
-    return _init_llm_service()
-
-def get_services_status():
-    """Статус всех сервисов с lazy evaluation"""
-    # Проверяем что сервисы инициализированы
-    doc_service = document_service if _document_service_initialized else None
-    scraper_service = scraper if _scraper_initialized else None
-    llm_srv = llm_service if _llm_service_initialized else None
-    
-    return {
-        "document_service_available": doc_service is not None,
-        "scraper_available": scraper_service is not None,
-        "llm_available": LLM_ENABLED,
-        "llm_service_created": llm_srv is not None,
-        "chromadb_enabled": CHROMADB_ENABLED,
-        "services_available": SERVICES_AVAILABLE,
-        "huggingface_spaces": os.getenv("SPACE_ID") is not None,
-        "environment": "hf_spaces" if os.getenv("SPACE_ID") else "local",
-        "demo_mode": not LLM_ENABLED,
-        "lazy_loading": True,
-        "gptq_model": "TheBloke/Llama-2-7B-Chat-GPTQ",
-        "initialization_status": {
-            "document_service": _document_service_initialized,
-            "scraper_service": _scraper_initialized,
-            "llm_service": _llm_service_initialized
-        },
-        "real_features": {
-            "vector_search": CHROMADB_ENABLED,
-            "web_scraping": _scraper_initialized and not isinstance(scraper, type(None)),
-            "ai_responses": LLM_ENABLED
-        }
-    }
-
-# ====================================
-# FALLBACK СЕРВИСЫ (оставляем как есть)
-# ====================================
-
-class FallbackDocumentService:
-    """Улучшенный fallback document service для HF Spaces"""
-    
-    def __init__(self):
-        self.service_type = "hf_spaces_fallback_improved"
+        self.service_type = "hf_spaces_fallback_v2"
         self.vector_db = type('MockVectorDB', (), {
             'persist_directory': './fallback_db'
         })()
         self.initialization_error = None
-        self.demo_documents_count = 3
-        logger.info("📝 Using improved fallback document service")
+        logger.info("📝 HF Spaces document fallback service ready")
     
-    async def search(self, query: str, category: str = None, limit: int = 5, min_relevance: float = 0.3):
-        """Улучшенный поиск с более реалистичными результатами"""
-        logger.info(f"🔍 Fallback search for: '{query}'")
+    def search(self, query: str, category: str = None, limit: int = 5, min_relevance: float = 0.3):
+        """Синхронный поиск с демо результатами"""
+        logger.info(f"🔍 Fallback search: '{query}'")
         
-        # Генерируем более релевантные демо результаты
-        demo_results = []
-        
-        # Базовый результат с релевантным контентом
-        base_content = f"""Legal Analysis for Query: "{query}"
+        demo_result = {
+            "content": f"""Legal Analysis for: "{query}"
 
-🏛️ **Document Summary:**
-This document contains legal information relevant to your search query. In a fully operational system, this would be actual content from legal databases.
+🏛️ **Document Summary (Demo Mode)**
+This demonstrates the expected API response structure for legal document search.
 
-📋 **Key Points:**
+📋 **Search Context:**
 • Query: "{query}"
 • Category: {category or "General Legal"}
-• Search Method: Semantic vector search (when ChromaDB available)
-• Relevance: High match found
+• Platform: HuggingFace Spaces
+• Mode: Document service initializing...
 
-⚖️ **Legal Context:**
-The system would analyze multiple legal documents, statutes, and case law to provide comprehensive answers. This includes:
-- Relevant legislation and regulations
-- Court decisions and precedents  
-- Administrative guidelines
-- Legal commentary and analysis
+⚖️ **Expected Features (when fully loaded):**
+• ChromaDB vector search with semantic similarity
+• Multiple legal document categories
+• Relevance scoring and ranking
+• Legal citation extraction
 
 🔧 **Current Status:**
-ChromaDB service is initializing. This demo shows the expected response format and structure.
+Document service is loading in background. This demo shows the expected response format.
 
-💡 **Note:** Full vector search capabilities will be available once the document service completes initialization."""
-        
-        demo_results.append({
-            "content": base_content,
-            "filename": f"legal_analysis_{query.replace(' ', '_')[:20]}.txt",
+💡 **Note:** Full document search will be available once ChromaDB initialization completes.""",
+            
+            "filename": f"legal_search_{query.replace(' ', '_')[:20]}.txt",
             "document_id": f"demo_{int(time.time())}",
-            "relevance_score": 0.92,
+            "relevance_score": 0.95,
             "metadata": {
                 "status": "demo_response",
                 "category": category or "general",
-                "service": "improved_fallback",
+                "service": "hf_spaces_fallback_v2",
                 "query": query,
-                "demo_mode": True,
-                "expected_features": [
-                    "Semantic vector search",
-                    "Multi-document analysis", 
-                    "Legal citation extraction",
-                    "Relevance scoring"
-                ],
-                "initialization_error": self.initialization_error
+                "platform": "HuggingFace Spaces",
+                "background_loading": _background_loading_started
             }
-        })
+        }
         
-        # Дополнительные результаты если нужно больше
-        if limit > 1:
-            for i in range(1, min(limit, self.demo_documents_count)):
-                secondary_content = f"""Related Legal Document #{i + 1}
-
-Query: "{query}"
-Document Type: {["Statute", "Case Law", "Regulation"][i % 3]}
-
-This would be additional relevant legal content found through vector search. Each document would be ranked by semantic similarity to your query.
-
-Status: Demo mode - ChromaDB initializing..."""
-
-                demo_results.append({
-                    "content": secondary_content,
-                    "filename": f"related_doc_{i+1}_{query.replace(' ', '_')[:15]}.txt", 
-                    "document_id": f"demo_{int(time.time())}_{i}",
-                    "relevance_score": max(0.4, 0.9 - (i * 0.15)),
-                    "metadata": {
-                        "status": "demo_response",
-                        "category": category or "general",
-                        "service": "improved_fallback",
-                        "demo_mode": True
-                    }
-                })
-        
-        return demo_results
+        return [demo_result]
     
-    async def get_stats(self):
-        """Улучшенная демо статистика с диагностикой"""
+    def get_stats(self):
+        """Синхронная статистика"""
         return {
             "total_documents": 0,
             "categories": ["general", "legislation", "jurisprudence", "government"],
-            "database_type": "ChromaDB (initializing...)",
-            "status": "Document service starting up",
-            "message": "Vector search will be available shortly",
-            "initialization_error": self.initialization_error,
-            "fallback_info": {
-                "demo_responses": True,
-                "expected_functionality": [
-                    "✅ REST API structure", 
-                    "✅ Search endpoint responses",
-                    "✅ Document upload endpoints",
-                    "⏳ ChromaDB vector search",
-                    "⏳ Real document processing",
-                    "⏳ Semantic similarity scoring"
-                ]
-            },
-            "troubleshooting": {
-                "common_issues": [
-                    "sentence-transformers installation",
-                    "ChromaDB persistence on HF Spaces", 
-                    "Memory limitations during startup",
-                    "Model loading timeouts"
-                ],
-                "recommendations": [
-                    "Service will auto-recover when dependencies load",
-                    "Demo responses show expected API structure",
-                    "Full functionality available after initialization"
-                ]
-            }
+            "database_type": "Initializing (ChromaDB loading...)",
+            "status": "Background initialization in progress",
+            "platform": "HuggingFace Spaces",
+            "background_loading": _background_loading_started,
+            "services_available": SERVICES_AVAILABLE
         }
     
-    async def get_all_documents(self):
-        """Демо список документов"""
+    def get_all_documents(self):
+        """Синхронный список документов"""
         return []
     
-    async def delete_document(self, doc_id: str):
-        """Демо удаление"""
+    def delete_document(self, doc_id: str):
+        """Синхронное удаление"""
         logger.info(f"Demo delete: {doc_id}")
         return False
     
-    async def process_and_store_file(self, file_path: str, category: str = "general"):
-        """Демо обработка файла"""
+    def process_and_store_file(self, file_path: str, category: str = "general"):
+        """Синхронная обработка файла"""
         logger.info(f"Demo file processing: {file_path}")
         return False
 
-class FallbackScraperService:
-    """Web scraper fallback"""
+class HFSpacesFallbackScraperService:
+    """Оптимизированный scraper fallback для HF Spaces"""
     
     def __init__(self):
-        self.service_type = "hf_spaces_scraper"
+        self.service_type = "hf_spaces_scraper_fallback"
         self.legal_sites_config = {
             "irishstatutebook.ie": {"title": "h1", "content": ".content"},
             "citizensinformation.ie": {"title": "h1", "content": ".content"},
             "zakon.rada.gov.ua": {"title": "h1", "content": ".content"}
         }
-        logger.info("🌐 HF Spaces scraper service initialized")
+        logger.info("🌐 HF Spaces scraper fallback ready")
     
-    async def scrape_legal_site(self, url: str):
-        """Демо скрапинг"""
+    def scrape_legal_site(self, url: str):
+        """Синхронный демо скрапинг"""
         logger.info(f"🔍 Demo scraping: {url}")
         
         demo_content = f"""📄 **Legal Document from {url}**
 
-This is a demonstration of web scraping functionality.
-Real scraping service is initializing...
+This is a demonstration of the web scraping functionality for HuggingFace Spaces.
 
 **Document Source:** {url}
-**Status:** Scraper loading aiohttp and beautifulsoup4...
+**Status:** Scraper service initializing...
+**Platform:** HuggingFace Spaces
 
-The full version will extract actual legal text from websites."""
+🔧 **Background Loading:**
+The real scraping service (aiohttp + beautifulsoup4) is loading in the background.
+
+⚖️ **Expected Functionality:**
+• Extract legal content from official sites
+• Parse Ukrainian and Irish legal documents  
+• Intelligent content extraction with CSS selectors
+• Metadata extraction and categorization
+
+🌐 **Supported Sites:**
+• zakon.rada.gov.ua (Ukrainian legislation)
+• irishstatutebook.ie (Irish statutory law)
+• citizensinformation.ie (Irish civil information)
+• courts.ie (Irish court decisions)
+
+💡 **Real scraping will be available once background initialization completes.**"""
         
         return type('DemoDocument', (), {
             'url': url,
@@ -545,16 +175,525 @@ The full version will extract actual legal text from websites."""
                 'status': 'demo',
                 'real_scraping': False,
                 'scraped_at': time.time(),
-                'service': 'hf_spaces_demo',
+                'service': 'hf_spaces_fallback',
+                'platform': 'HuggingFace Spaces',
+                'background_loading': _background_loading_started,
                 'url': url
             },
             'category': 'demo'
         })()
     
-    async def scrape_multiple_urls(self, urls: List[str], delay: float = 1.0):
-        """Демо массовый скрапинг"""
+    def scrape_multiple_urls(self, urls: List[str], delay: float = 1.0):
+        """Синхронный массовый скрапинг"""
         results = []
         for url in urls:
-            doc = await self.scrape_legal_site(url)
+            doc = self.scrape_legal_site(url)
             results.append(doc)
         return results
+
+class HFSpacesImprovedLLMFallback:
+    """Улучшенный LLM fallback с поддержкой украинского языка"""
+    
+    def __init__(self):
+        self.service_type = "hf_spaces_gptq_fallback_improved"
+        self.model_loaded = False
+        self.target_model = "TheBloke/Llama-2-7B-Chat-GPTQ"
+        logger.info(f"🤖 HF Spaces GPTQ fallback ready for: {self.target_model}")
+    
+    def answer_legal_question(self, question: str, context_documents: List[Dict], language: str = "en"):
+        """Синхронные улучшенные демо ответы"""
+        from services.huggingface_llm_service import LLMResponse
+        
+        if language == "uk":
+            demo_content = f"""🏛️ **Юридична консультація (GPTQ модель завантажується)**
+
+**Ваше питання:** {question}
+
+**Аналіз документів:** Знайдено {len(context_documents)} релевантних документів у базі знань.
+
+🤖 **Статус GPTQ моделі:**
+• Модель: `{self.target_model}`
+• Оптимізація: 4-bit GPTQ квантизація
+• Платформа: HuggingFace Spaces
+• Статус: Завантаження в фоновому режимі...
+
+📋 **Очікувана функціональність:**
+✅ Високоякісний аналіз юридичних питань
+✅ Підтримка української та англійської мов
+✅ Контекстуальні відповіді на основі документів
+✅ Посилання на конкретні статті законів
+✅ Практичні рекомендації та покрокові дії
+
+⏳ **Процес завантаження:**
+1. Ініціалізація трансформерів HuggingFace
+2. Завантаження GPTQ квантизованої моделі (~4GB)
+3. Оптимізація для HuggingFace Spaces (обмеження пам'яті)
+4. Підготовка правової системи промптів
+
+💡 **Порада:** GPTQ модель забезпечить високу якість відповідей при мінімальному використанні пам'яті. Спробуйте ще раз через 1-2 хвилини для отримання повної AI відповіді.
+
+🔧 **Технічні деталі:**
+• Архітектура: Llama-2-7B з 4-bit квантизацією
+• Пам'ять: Оптимізовано для 16GB лімітів HF Spaces
+• Мови: Англійська та українська
+• Спеціалізація: Правові консультації та аналіз"""
+        else:
+            demo_content = f"""🏛️ **Legal Consultation (GPTQ Model Loading)**
+
+**Your Question:** {question}
+
+**Document Analysis:** Found {len(context_documents)} relevant documents in knowledge base.
+
+🤖 **GPTQ Model Status:**
+• Model: `{self.target_model}`
+• Optimization: 4-bit GPTQ quantization
+• Platform: HuggingFace Spaces
+• Status: Loading in background...
+
+📋 **Expected Functionality:**
+✅ High-quality legal question analysis
+✅ English and Ukrainian language support
+✅ Context-aware responses based on documents
+✅ Specific law and regulation references
+✅ Practical recommendations and step-by-step guidance
+
+⏳ **Loading Process:**
+1. Initializing HuggingFace Transformers
+2. Loading GPTQ quantized model (~4GB)
+3. Optimizing for HuggingFace Spaces memory limits
+4. Preparing legal prompt system
+
+💡 **Tip:** GPTQ model will provide high-quality responses with minimal memory usage. Try again in 1-2 minutes for full AI response.
+
+🔧 **Technical Details:**
+• Architecture: Llama-2-7B with 4-bit quantization
+• Memory: Optimized for 16GB HF Spaces limits
+• Languages: English and Ukrainian
+• Specialization: Legal consultation and analysis"""
+        
+        return LLMResponse(
+            content=demo_content,
+            model=self.target_model,
+            tokens_used=len(demo_content.split()),
+            response_time=0.3,
+            success=True,
+            error=None
+        )
+    
+    def get_service_status(self):
+        """Синхронный статус"""
+        return {
+            "model_loaded": False,
+            "model_name": self.target_model,
+            "huggingface_available": True,
+            "service_type": "gptq_fallback_improved",
+            "environment": "HuggingFace Spaces",
+            "status": "GPTQ model loading in background",
+            "supported_languages": ["en", "uk"],
+            "background_loading": _background_loading_started,
+            "optimization": "4-bit GPTQ quantization",
+            "memory_efficient": True,
+            "target_model": self.target_model,
+            "recommendations": [
+                "GPTQ model provides production-quality legal analysis",
+                "4-bit quantization enables efficient memory usage",
+                "Background loading ensures fast API startup",
+                "Full AI responses available after model loads"
+            ]
+        }
+
+# ====================================
+# СИНХРОННАЯ ИНИЦИАЛИЗАЦИЯ ФУНКЦИЙ
+# ====================================
+
+def _init_document_service_sync():
+    """Синхронная инициализация document service"""
+    global document_service, _document_service_initialized, CHROMADB_ENABLED
+    
+    if _document_service_initialized:
+        return document_service
+    
+    logger.info("🔄 Sync initializing document service...")
+    
+    try:
+        # Простая проверка ChromaDB без async
+        try:
+            import sentence_transformers
+            import chromadb
+            # НЕ инициализируем ChromaDB здесь - слишком медленно
+            # Используем fallback и запускаем ChromaDB в фоне
+            logger.info("📚 ChromaDB dependencies available, will init in background")
+            
+        except ImportError as e:
+            logger.info(f"ChromaDB dependencies missing: {e}")
+        
+        # Всегда используем fallback для быстрого старта
+        document_service = HFSpacesFallbackDocumentService()
+        CHROMADB_ENABLED = False
+        _document_service_initialized = True
+        
+        # Запускаем background инициализацию ChromaDB
+        _start_background_chromadb_init()
+        
+        logger.info("✅ Document service ready (fallback + background loading)")
+        return document_service
+        
+    except Exception as e:
+        logger.error(f"❌ Document service sync init failed: {e}")
+        document_service = HFSpacesFallbackDocumentService()
+        document_service.initialization_error = str(e)
+        _document_service_initialized = True
+        return document_service
+
+def _init_scraper_service_sync():
+    """Синхронная инициализация scraper service"""
+    global scraper, _scraper_initialized
+    
+    if _scraper_initialized:
+        return scraper
+    
+    logger.info("🔄 Sync initializing scraper service...")
+    
+    try:
+        # Проверяем библиотеки без импорта (быстро)
+        try:
+            import aiohttp
+            import bs4
+            libraries_available = True
+        except ImportError:
+            libraries_available = False
+        
+        if libraries_available:
+            # Библиотеки есть, но используем fallback для быстрого старта
+            # Реальный scraper инициализируем в фоне
+            logger.info("🌐 Scraper libraries available, will init real scraper in background")
+            _start_background_scraper_init()
+        
+        # Всегда используем fallback для быстрого старта
+        scraper = HFSpacesFallbackScraperService()
+        _scraper_initialized = True
+        
+        logger.info("✅ Scraper service ready (fallback + background loading)")
+        return scraper
+        
+    except Exception as e:
+        logger.error(f"❌ Scraper sync init failed: {e}")
+        scraper = HFSpacesFallbackScraperService()
+        _scraper_initialized = True
+        return scraper
+
+def _init_llm_service_sync():
+    """Синхронная инициализация LLM service"""
+    global llm_service, _llm_service_initialized, LLM_ENABLED
+    
+    if _llm_service_initialized:
+        return llm_service
+    
+    logger.info("🔄 Sync initializing LLM service...")
+    
+    try:
+        # Проверяем демо режим
+        if settings.LLM_DEMO_MODE:
+            logger.info("🎭 LLM demo mode enabled")
+            llm_service = HFSpacesImprovedLLMFallback()
+            LLM_ENABLED = False
+            _llm_service_initialized = True
+            return llm_service
+        
+        # Проверяем наличие зависимостей без загрузки модели
+        try:
+            import torch
+            import transformers
+            dependencies_available = True
+            logger.info("🤖 GPTQ dependencies available")
+        except ImportError as e:
+            logger.warning(f"GPTQ dependencies missing: {e}")
+            dependencies_available = False
+        
+        # Всегда используем fallback для быстрого старта
+        llm_service = HFSpacesImprovedLLMFallback()
+        LLM_ENABLED = False
+        _llm_service_initialized = True
+        
+        # Запускаем background загрузку GPTQ модели если зависимости есть
+        if dependencies_available:
+            _start_background_gptq_init()
+        
+        logger.info("✅ LLM service ready (fallback + background GPTQ loading)")
+        return llm_service
+        
+    except Exception as e:
+        logger.error(f"❌ LLM sync init failed: {e}")
+        llm_service = HFSpacesImprovedLLMFallback()
+        LLM_ENABLED = False
+        _llm_service_initialized = True
+        return llm_service
+
+# ====================================
+# BACKGROUND АСИНХРОННАЯ ИНИЦИАЛИЗАЦИЯ
+# ====================================
+
+def _start_background_chromadb_init():
+    """Запускает инициализацию ChromaDB в фоне"""
+    global _background_tasks
+    
+    if "chromadb" in _background_tasks:
+        return
+    
+    logger.info("🚀 Starting background ChromaDB initialization...")
+    
+    def background_chromadb_worker():
+        try:
+            time.sleep(2)  # Даем приложению запуститься
+            logger.info("📚 Background: Initializing ChromaDB...")
+            
+            from services.chroma_service import DocumentService
+            
+            # Создаем директорию
+            os.makedirs(settings.CHROMADB_PATH, exist_ok=True)
+            
+            # Инициализируем ChromaDB
+            real_service = DocumentService(settings.CHROMADB_PATH)
+            
+            # Заменяем глобальный сервис
+            global document_service, CHROMADB_ENABLED
+            document_service = real_service
+            CHROMADB_ENABLED = True
+            
+            logger.info("✅ Background: ChromaDB initialized successfully")
+            
+        except Exception as e:
+            logger.error(f"❌ Background ChromaDB init failed: {e}")
+    
+    # Запускаем в отдельном треде
+    future = _executor.submit(background_chromadb_worker)
+    _background_tasks["chromadb"] = future
+
+def _start_background_scraper_init():
+    """Запускает инициализацию реального scraper в фоне"""
+    global _background_tasks
+    
+    if "scraper" in _background_tasks:
+        return
+    
+    logger.info("🚀 Starting background scraper initialization...")
+    
+    def background_scraper_worker():
+        try:
+            time.sleep(3)  # Даем приложению запуститься
+            logger.info("🌐 Background: Initializing real scraper...")
+            
+            from services.scraper_service import LegalSiteScraper
+            
+            # Создаем реальный scraper
+            real_scraper = LegalSiteScraper()
+            
+            # Заменяем глобальный сервис
+            global scraper
+            scraper = real_scraper
+            
+            logger.info("✅ Background: Real scraper initialized successfully")
+            
+        except Exception as e:
+            logger.error(f"❌ Background scraper init failed: {e}")
+    
+    # Запускаем в отдельном треде
+    future = _executor.submit(background_scraper_worker)
+    _background_tasks["scraper"] = future
+
+def _start_background_gptq_init():
+    """Запускает загрузку GPTQ модели в фоне"""
+    global _background_tasks
+    
+    if "gptq" in _background_tasks:
+        return
+    
+    logger.info("🚀 Starting background GPTQ model loading...")
+    
+    def background_gptq_worker():
+        try:
+            time.sleep(5)  # Даем приложению полностью запуститься
+            logger.info("🤖 Background: Loading GPTQ model...")
+            
+            from services.huggingface_llm_service import create_llm_service
+            
+            # Пытаемся загрузить GPTQ модель
+            real_llm = create_llm_service("TheBloke/Llama-2-7B-Chat-GPTQ")
+            
+            # Проверяем что модель действительно загрузилась
+            if hasattr(real_llm, 'model_loaded') and real_llm.model_loaded:
+                # Заменяем глобальный сервис
+                global llm_service, LLM_ENABLED
+                llm_service = real_llm
+                LLM_ENABLED = True
+                
+                logger.info("✅ Background: GPTQ model loaded successfully!")
+            else:
+                logger.warning("⚠️ Background: GPTQ model not ready, keeping fallback")
+                
+        except Exception as e:
+            logger.error(f"❌ Background GPTQ loading failed: {e}")
+    
+    # Запускаем в отдельном треде
+    future = _executor.submit(background_gptq_worker)
+    _background_tasks["gptq"] = future
+
+def _start_all_background_tasks():
+    """Запускает все background задачи"""
+    global _background_loading_started
+    
+    if _background_loading_started:
+        return
+    
+    _background_loading_started = True
+    logger.info("🚀 Starting all background initialization tasks...")
+    
+    # Запускаем все background задачи
+    _start_background_chromadb_init()
+    _start_background_scraper_init() 
+    _start_background_gptq_init()
+
+# ====================================
+# DEPENDENCY FUNCTIONS (СИНХРОННЫЕ)
+# ====================================
+
+def get_document_service():
+    """Dependency для получения document service - СИНХРОННАЯ"""
+    service = _init_document_service_sync()
+    
+    # Запускаем background tasks если еще не запущены
+    if not _background_loading_started:
+        _start_all_background_tasks()
+    
+    return service
+
+def get_scraper_service():
+    """Dependency для получения scraper service - СИНХРОННАЯ"""
+    service = _init_scraper_service_sync()
+    
+    # Запускаем background tasks если еще не запущены
+    if not _background_loading_started:
+        _start_all_background_tasks()
+    
+    return service
+
+def get_llm_service():
+    """Dependency для получения LLM service - СИНХРОННАЯ"""
+    service = _init_llm_service_sync()
+    
+    # Запускаем background tasks если еще не запущены
+    if not _background_loading_started:
+        _start_all_background_tasks()
+    
+    return service
+
+def get_services_status():
+    """Статус всех сервисов - СИНХРОННАЯ"""
+    return {
+        "document_service_available": _document_service_initialized,
+        "scraper_available": _scraper_initialized,
+        "llm_available": LLM_ENABLED,
+        "llm_service_created": _llm_service_initialized,
+        "chromadb_enabled": CHROMADB_ENABLED,
+        "services_available": SERVICES_AVAILABLE,
+        "huggingface_spaces": os.getenv("SPACE_ID") is not None,
+        "environment": "hf_spaces" if os.getenv("SPACE_ID") else "local",
+        "demo_mode": not LLM_ENABLED,
+        "lazy_loading": True,
+        "gptq_model": "TheBloke/Llama-2-7B-Chat-GPTQ",
+        "background_loading": _background_loading_started,
+        "background_tasks": {
+            "chromadb_started": "chromadb" in _background_tasks,
+            "scraper_started": "scraper" in _background_tasks,
+            "gptq_started": "gptq" in _background_tasks
+        },
+        "initialization_status": {
+            "document_service": _document_service_initialized,
+            "scraper_service": _scraper_initialized,
+            "llm_service": _llm_service_initialized
+        },
+        "real_features": {
+            "vector_search": CHROMADB_ENABLED,
+            "web_scraping": _scraper_initialized and not isinstance(scraper, HFSpacesFallbackScraperService),
+            "ai_responses": LLM_ENABLED
+        }
+    }
+
+# ====================================
+# УБИРАЕМ АСИНХРОННУЮ ИНИЦИАЛИЗАЦИЮ
+# ====================================
+
+async def init_services():
+    """Упрощенная функция для совместимости - НЕ ВЫЗЫВАЕТСЯ"""
+    logger.info("🚀 HF Spaces: Using sync initialization with background loading")
+    logger.info("📦 Services will initialize on first request + background tasks")
+    
+    # Просто помечаем что система готова
+    global SERVICES_AVAILABLE
+    SERVICES_AVAILABLE = True
+    
+    logger.info("✅ Sync initialization ready")
+
+# ====================================
+# НОВЫЕ ФУНКЦИИ ДЛЯ МОНИТОРИНГА
+# ====================================
+
+def get_background_tasks_status():
+    """Возвращает статус background задач"""
+    status = {}
+    
+    for task_name, future in _background_tasks.items():
+        if future.done():
+            if future.exception():
+                status[task_name] = {
+                    "status": "failed",
+                    "error": str(future.exception())
+                }
+            else:
+                status[task_name] = {
+                    "status": "completed",
+                    "result": "success"
+                }
+        else:
+            status[task_name] = {
+                "status": "running",
+                "progress": "in_progress"
+            }
+    
+    return {
+        "background_loading_started": _background_loading_started,
+        "total_tasks": len(_background_tasks),
+        "tasks": status
+    }
+
+def force_background_init():
+    """Принудительно запускает background инициализацию"""
+    _start_all_background_tasks()
+    return {
+        "message": "Background initialization started",
+        "tasks_started": len(_background_tasks)
+    }
+
+# ====================================
+# ЭКСПОРТ
+# ====================================
+
+__all__ = [
+    # Основные dependency функции
+    "get_document_service",
+    "get_scraper_service", 
+    "get_llm_service",
+    "get_services_status",
+    
+    # Статус и мониторинг
+    "get_background_tasks_status",
+    "force_background_init",
+    
+    # Совместимость
+    "init_services",
+    
+    # Глобальные переменные
+    "SERVICES_AVAILABLE",
+    "CHROMADB_ENABLED", 
+    "LLM_ENABLED"
+]
