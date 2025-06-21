@@ -82,7 +82,7 @@ class Settings(BaseSettings):
     
     # Параметры генерации
     LLM_TEMPERATURE: float = 0.3  # Низкая для юридических вопросов
-    LLM_MAX_TOKENS: int = 1500
+    LLM_MAX_TOKENS: int = 20
     LLM_TIMEOUT: int = 120  # секунд (увеличено с 60)
     
     # Управление контекстом

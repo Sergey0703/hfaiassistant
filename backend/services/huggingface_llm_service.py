@@ -298,7 +298,7 @@ class HuggingFaceLLMService:
             import torch
             
             # Сокращенные настройки для HF Spaces
-            max_new_tokens = 400 if self.hf_spaces else 800
+            max_new_tokens = 20 if self.hf_spaces else 800
             max_input_length = 1500 if self.hf_spaces else 2000
             
             # Токенизируем с ограничениями
