@@ -944,8 +944,8 @@ else:
     logger.info("🤖 GPTQ Model: TheBloke/Llama-2-7B-Chat-GPTQ")
     logger.info("🚀 Ready for HuggingFace Spaces deployment")
     logger.info("💾 Memory optimized for 16GB limit")
-    logger.info("🔄 Lazy loading enabled for faster startup")Memory: Optimized for HF Spaces 16GB limit")
+    logger.info("🔄 Lazy loading enabled for faster startup Memory: Optimized for HF Spaces 16GB limit")
     print("🔗 API Documentation: /docs")
     print("🏥 Health Check: /hf-spaces-health")
     print("📊 Startup Progress: /startup-progress")
-    print("💾
+    
