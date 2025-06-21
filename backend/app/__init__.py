@@ -139,7 +139,7 @@ def create_app() -> "FastAPI":
                 "version": app_config.get("version", "2.0.0"),
                 "status": "healthy",
                 "platform": "HuggingFace Spaces" if app.state.hf_spaces else "Local",
-                "model": "TheBloke/Llama-2-7B-Chat-GPTQ",
+                "model": "microsoft/DialoGPT-medium",
                 "features": {
                     "lazy_loading": True,
                     "gptq_support": True,

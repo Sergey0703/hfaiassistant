@@ -25,7 +25,7 @@ class LLMResponse:
 class HuggingFaceLLMService:
     """Оптимизированный LLM Service для HF Spaces с GPTQ поддержкой"""
     
-    def __init__(self, model_name: str = "TheBloke/Llama-2-7B-Chat-GPTQ"):
+    def __init__(self, model_name: str = "microsoft/DialoGPT-medium"):
         self.model_name = model_name
         self.model = None
         self.tokenizer = None
@@ -82,7 +82,7 @@ class HuggingFaceLLMService:
             model_candidates = [
                 self.model_name,  # Ваша основная модель
                 "TheBloke/Mistral-7B-Instruct-v0.1-GPTQ",  # Более легкая альтернатива
-                "TheBloke/Llama-2-7B-Chat-GPTQ"  # Fallback
+                "microsoft/DialoGPT-medium"  # Fallback
             ]
             
             for attempt, candidate_model in enumerate(model_candidates):
@@ -541,7 +541,7 @@ Please try rephrasing your question or try again."""
         
         return status
 
-def create_llm_service(model_name: str = "TheBloke/Llama-2-7B-Chat-GPTQ"):
+def create_llm_service(model_name: str = "microsoft/DialoGPT-medium"):
     """Создает оптимизированный LLM сервис"""
     try:
         return HuggingFaceLLMService(model_name)
