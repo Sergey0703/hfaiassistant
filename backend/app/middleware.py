@@ -125,7 +125,7 @@ def setup_middleware(app):
                 response.headers["X-Process-Time"] = str(round(process_time, 3))
                 
                 # Добавляем security заголовки
-                _add_security_headers(response)
+                #_add_security_headers(response)
                 
                 # Логируем ответ (исключаем статические файлы)
                 if not _is_static_path(path):
