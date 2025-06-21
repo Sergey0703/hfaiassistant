@@ -1,4 +1,11 @@
-# Core FastAPI dependencies
+# ====================================
+# COMPLETE REQUIREMENTS.TXT - ПОЛНАЯ ВЕРСИЯ
+# Все зависимости для Legal Assistant API с LlamaCpp
+# ====================================
+
+# ====================================
+# CORE FASTAPI DEPENDENCIES
+# ====================================
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
 python-multipart==0.0.6
@@ -6,43 +13,238 @@ pydantic==2.5.0
 pydantic-settings==2.1.0
 python-dotenv==1.0.0
 
-# HTTP and async
+# ====================================
+# HTTP AND ASYNC SUPPORT
+# ====================================
 aiohttp==3.9.1
 aiofiles==23.2.0
 httpx==0.25.2
+asyncio-mqtt==0.13.0
 
-# НОВОЕ: LlamaCpp для стабильного CPU inference
+# ====================================
+# LLAMACPP AND MODEL SUPPORT (ОСНОВНОЕ)
+# ====================================
+# LlamaCpp for stable CPU inference
 llama-cpp-python==0.2.11
 
-# Vector Database - ChromaDB (сохраняем)
+# HuggingFace Hub for automatic model download
+huggingface-hub>=0.20.0,<0.25.0
+
+# Transformers (для совместимости и fallback)
+transformers>=4.35.0,<5.0.0
+
+# ====================================
+# VECTOR DATABASE - CHROMADB
+# ====================================
 numpy>=1.21.0,<2.0.0
 sentence-transformers>=2.7.0
 chromadb==0.4.18
 
-# УДАЛЕНО: Старые GPTQ зависимости (больше не нужны)
-# transformers>=4.35.0,<5.0.0
-# huggingface-hub>=0.20.0,<0.25.0
-# auto-gptq>=0.4.2
-# optimum>=1.15.0
+# Embedding dependencies
+torch>=2.0.0,<3.0.0
+torchvision>=0.15.0,<1.0.0
+torchaudio>=2.0.0,<3.0.0
 
-# Text processing
+# ====================================
+# WEB SCRAPING
+# ====================================
 beautifulsoup4==4.12.2
 lxml==4.9.3
+aiohttp==3.9.1
+requests==2.31.0
+selenium==4.15.2
+webdriver-manager==4.0.1
+
+# ====================================
+# TEXT PROCESSING AND NLP
+# ====================================
 langdetect==1.0.9
+nltk==3.8.1
+spacy>=3.7.0,<4.0.0
+textstat==0.7.3
 
-# Data processing
+# ====================================
+# DATA PROCESSING
+# ====================================
 pandas>=2.0.0,<3.0.0
+openpyxl==3.1.2
+xlrd==2.0.1
+python-docx==1.1.0
+PyPDF2==3.0.1
+pdfplumber==0.10.0
 
-# Utilities
+# ====================================
+# DATABASE SUPPORT
+# ====================================
+# SQLite (встроен в Python)
+sqlalchemy==2.0.23
+alembic==1.13.0
+
+# Redis (optional)
+redis>=4.5.0,<6.0.0
+hiredis>=2.2.0,<3.0.0
+
+# ====================================
+# UTILITIES AND HELPERS
+# ====================================
 tqdm==4.66.1
 cachetools==5.3.2
 orjson==3.9.10
+python-dateutil==2.8.2
+pytz==2023.3
 
-# File handling
+# ====================================
+# FILE HANDLING
+# ====================================
 filetype==1.2.0
+magic==0.4.27
+pathlib2==2.3.7
 
-# JSON schema
+# ====================================
+# CONFIGURATION AND VALIDATION
+# ====================================
 jsonschema==4.20.0
+cerberus==1.3.5
+marshmallow==3.20.1
 
-# Retry logic
+# ====================================
+# RETRY AND ERROR HANDLING
+# ====================================
 tenacity==8.2.3
+backoff==2.2.1
+
+# ====================================
+# LOGGING AND MONITORING
+# ====================================
+loguru==0.7.2
+structlog==23.2.0
+
+# ====================================
+# TESTING (DEVELOPMENT)
+# ====================================
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pytest-cov==4.1.0
+httpx==0.25.2  # for testing async endpoints
+
+# ====================================
+# SECURITY
+# ====================================
+cryptography>=41.0.0,<42.0.0
+passlib[bcrypt]==1.7.4
+python-jose[cryptography]==3.3.0
+python-multipart==0.0.6
+
+# ====================================
+# CORS AND MIDDLEWARE
+# ====================================
+# CORS support (встроен в FastAPI)
+# python-cors==1.7.0  # не нужен
+
+# ====================================
+# SYSTEM MONITORING
+# ====================================
+psutil==5.9.6
+py-cpuinfo==9.0.0
+
+# ====================================
+# OPTIONAL: OLLAMA SUPPORT (если используется)
+# ====================================
+# ollama==0.1.7  # Раскомментируйте если нужен Ollama
+
+# ====================================
+# OPTIONAL: ADDITIONAL ML LIBRARIES
+# ====================================
+# scikit-learn>=1.3.0,<2.0.0  # для дополнительного ML
+# matplotlib>=3.7.0,<4.0.0    # для графиков
+# seaborn>=0.12.0,<1.0.0       # для визуализации
+
+# ====================================
+# DEVELOPMENT TOOLS (OPTIONAL)
+# ====================================
+# black==23.11.0      # форматирование кода
+# flake8==6.1.0       # линтер
+# mypy==1.7.1         # проверка типов
+# pre-commit==3.6.0   # git hooks
+
+# ====================================
+# PRODUCTION DEPLOYMENT
+# ====================================
+gunicorn==21.2.0
+supervisor==4.2.5
+
+# ====================================
+# ENVIRONMENT SPECIFIC
+# ====================================
+# Для HuggingFace Spaces
+# gradio==4.8.0       # если нужен Gradio интерфейс
+# spaces==0.18.0      # HF Spaces utilities
+
+# ====================================
+# COMPATIBILITY FIXES
+# ====================================
+# Для решения конфликтов версий
+setuptools>=65.0.0
+wheel>=0.38.0
+pip>=23.0.0
+
+# ====================================
+# CRITICAL NOTES:
+# ====================================
+# 1. llama-cpp-python - ОСНОВНАЯ зависимость для LLM
+# 2. huggingface-hub - для автоматической загрузки моделей
+# 3. chromadb - для векторного поиска
+# 4. sentence-transformers - для эмбеддингов
+# 5. beautifulsoup4 + lxml - для веб-скрапинга
+# 6. fastapi + uvicorn - основа API
+# 7. aiohttp - для асинхронных HTTP запросов
+# 8. torch - для ML моделей (CPU версия)
+
+# ====================================
+# INSTALLATION COMMANDS:
+# ====================================
+# Базовая установка:
+# pip install -r requirements.txt
+
+# Для разработки:
+# pip install -r requirements.txt
+# pip install black flake8 mypy pre-commit
+
+# Для production:
+# pip install -r requirements.txt --no-deps
+
+# ====================================
+# PLATFORM SPECIFIC NOTES:
+# ====================================
+# HuggingFace Spaces: Все зависимости должны устанавливаться автоматически
+# Local development: Может потребоваться дополнительная настройка torch
+# Docker: Используйте multi-stage build для оптимизации размера
+
+# ====================================
+# MEMORY REQUIREMENTS:
+# ====================================
+# Минимум: 8GB RAM
+# Рекомендуется: 16GB RAM (для HF Spaces)
+# LlamaCpp модели: 3-5GB дискового пространства
+# ChromaDB: 1-2GB для среднего размера базы
+
+# ====================================
+# TROUBLESHOOTING:
+# ====================================
+# Если ошибки с llama-cpp-python:
+# pip install llama-cpp-python --force-reinstall --no-cache-dir
+
+# Если ошибки с torch:
+# pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+
+# Если ошибки с ChromaDB:
+# pip install chromadb --upgrade
+
+# ====================================
+# VERSION COMPATIBILITY MATRIX:
+# ====================================
+# Python: 3.8+ (рекомендуется 3.11)
+# FastAPI: 0.104.x
+# llama-cpp-python: 0.2.x
+# ChromaDB: 0.4.x
+# HuggingFace Hub: 0.20.x+
