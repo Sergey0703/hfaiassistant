@@ -246,7 +246,7 @@ class HFSpacesImprovedLLMFallback:
     def __init__(self):
         self.service_type = "hf_spaces_gptq_fallback_improved"
         self.model_loaded = False
-        self.target_model = "microsoft/DialoGPT-medium"
+        self.target_model = "TheBloke/Llama-2-7B-Chat-GPTQ"
         logger.info(f"🤖 HF Spaces GPTQ fallback ready for: {self.target_model}")
     
     async def answer_legal_question(self, question: str, context_documents: List[Dict], language: str = "en"):
@@ -593,7 +593,7 @@ def _start_background_gptq_init():
             from services.huggingface_llm_service import create_llm_service
             
             # Пытаемся загрузить GPTQ модель
-            real_llm = create_llm_service("microsoft/DialoGPT-medium")
+            real_llm = create_llm_service("TheBloke/Llama-2-7B-Chat-GPTQ")
             
             # Проверяем что модель действительно загрузилась
             if hasattr(real_llm, 'model_loaded') and real_llm.model_loaded:
@@ -675,7 +675,7 @@ def get_services_status():
         "environment": "hf_spaces" if os.getenv("SPACE_ID") else "local",
         "demo_mode": not LLM_ENABLED,
         "lazy_loading": True,
-        "gptq_model": "microsoft/DialoGPT-medium",
+        "gptq_model": "TheBloke/Llama-2-7B-Chat-GPTQ",
         "background_loading": _background_loading_started,
         "background_tasks": {
             "chromadb_started": "chromadb" in _background_tasks,

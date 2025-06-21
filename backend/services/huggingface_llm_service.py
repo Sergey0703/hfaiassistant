@@ -25,7 +25,7 @@ class LLMResponse:
 class HuggingFaceLLMService:
     """Оптимизированный LLM Service для HF Spaces с GPTQ поддержкой"""
     
-    def __init__(self, model_name: str = "microsoft/DialoGPT-medium"):
+    def __init__(self, model_name: str = "TheBloke/Llama-2-7B-Chat-GPTQ"):
         self.model_name = model_name
         self.model = None
         self.tokenizer = None
@@ -82,7 +82,7 @@ class HuggingFaceLLMService:
             model_candidates = [
                 self.model_name,  # Ваша основная модель
                 "TheBloke/Mistral-7B-Instruct-v0.1-GPTQ",  # Более легкая альтернатива
-                "microsoft/DialoGPT-medium"  # Fallback
+                "TheBloke/Llama-2-7B-Chat-GPTQ"  # Fallback
             ]
             
             for attempt, candidate_model in enumerate(model_candidates):
@@ -98,20 +98,17 @@ class HuggingFaceLLMService:
                     )
                     
                     # Настройки для GPTQ с HF Spaces оптимизациями
+                    # ИСПРАВЛЕННЫЕ настройки для GPTQ с агрессивной оптимизацией памяти
                     model_kwargs = {
-                        "torch_dtype": torch.float32,
-                        "trust_remote_code": True,
-                        "low_cpu_mem_usage": True,
-                        "cache_dir": "./.cache" if self.hf_spaces else None
+                    "torch_dtype": torch.float16,  # Изменено с float32
+                    "trust_remote_code": True,
+                    "low_cpu_mem_usage": True,
+                    "cache_dir": "./.cache" if self.hf_spaces else None,
+                    "device_map": "auto",
+                    "max_memory": {"cpu": "12GB", 0: "3GB"},  # Жесткие лимиты
+                    "offload_folder": "./offload",  # CPU offloading
+                    "use_cache": False  # Отключаем кэш
                     }
-                    
-                    # HF Spaces specific optimizations
-                    if self.hf_spaces:
-                        model_kwargs.update({
-                            "device_map": "auto",
-                            "max_memory": {0: f"{self.max_memory_gb-2}GB"} if torch.cuda.is_available() else None,
-                            "offload_folder": "./offload" if not torch.cuda.is_available() else None
-                        })
                     else:
                         model_kwargs["device_map"] = "auto"
                     
@@ -313,11 +310,12 @@ class HuggingFaceLLMService:
             generation_kwargs = {
                 "max_new_tokens": max_new_tokens,
                 "num_return_sequences": 1,
-                "temperature": 0.2,  # Более консервативная для юридических вопросов
+                "temperature": 0.1,  # Более консервативная для юридических вопросов
                 "do_sample": True,
                 "pad_token_id": self.tokenizer.eos_token_id,
                 "eos_token_id": self.tokenizer.eos_token_id,
-                "no_repeat_ngram_size": 3  # Избегаем повторений
+                "no_repeat_ngram_size": 2,  # Избегаем повторений
+                "use_cache": False
             }
             
             # HF Spaces specific optimizations
@@ -541,7 +539,7 @@ Please try rephrasing your question or try again."""
         
         return status
 
-def create_llm_service(model_name: str = "microsoft/DialoGPT-medium"):
+def create_llm_service(model_name: str = "TheBloke/Llama-2-7B-Chat-GPTQ"):
     """Создает оптимизированный LLM сервис"""
     try:
         return HuggingFaceLLMService(model_name)
