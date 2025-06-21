@@ -101,12 +101,12 @@ class HuggingFaceLLMService:
                     
                     # КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Агрессивные настройки памяти
                     model_kwargs = {
-                        "torch_dtype": torch.float16,  # ИСПРАВЛЕНО: float16 вместо float32
+                        "torch_dtype": torch.float32,  # ИСПРАВЛЕНО: float16 вместо float32
                         "trust_remote_code": True,
                         "low_cpu_mem_usage": True,
                         "cache_dir": "./.cache" if self.hf_spaces else None,
-                        "device_map": "auto",
-                        "max_memory": {"cpu": "10GB", 0: "3GB"} if torch.cuda.is_available() else {"cpu": "12GB"},  # Жесткие лимиты
+                        "device_map": "cpu",
+                        "max_memory": {"cpu": "12GB"},  # Жесткие лимиты
                         "offload_folder": "./offload",  # CPU offloading
                         "offload_state_dict": True,  # Offload state dict
                     }
