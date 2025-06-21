@@ -38,7 +38,7 @@ async def chat_with_assistant(
         # ЭТАП 1: ПОИСК РЕЛЕВАНТНЫХ ДОКУМЕНТОВ
         # ====================================
         try:
-            search_results = document_service.search(
+            search_results = await document_service.search(
                 query=message.message,
                 limit=settings.MAX_CONTEXT_DOCUMENTS,  # Используем конфиг лимит
                 min_relevance=0.3  # Минимальный порог релевантности 30%
@@ -432,7 +432,7 @@ async def test_search_functionality(
         logger.info(f"Testing search with query: '{query}', min_relevance: {min_relevance}")
         
         # Выполняем поиск
-        results = document_service.search(
+        results = await document_service.search(
             query=query,
             limit=5,
             min_relevance=min_relevance

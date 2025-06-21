@@ -99,7 +99,7 @@ class HuggingFaceLLMService:
                     
                     # Настройки для GPTQ с HF Spaces оптимизациями
                     model_kwargs = {
-                        "torch_dtype": torch.float16,
+                        "torch_dtype": torch.float32,
                         "trust_remote_code": True,
                         "low_cpu_mem_usage": True,
                         "cache_dir": "./.cache" if self.hf_spaces else None
