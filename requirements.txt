@@ -44,4 +44,4 @@ filetype==1.2.0
 jsonschema==4.20.0
 
 # Retry logic
-tenacity==8.2.3
+tenacity==8.2.3"" 
