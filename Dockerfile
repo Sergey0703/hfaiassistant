@@ -1,4 +1,4 @@
-# Dockerfile для HuggingFace Spaces с исправлением прав доступа
+# Dockerfile для HuggingFace Spaces с принудительной установкой зависимостей
 FROM python:3.11-slim
 
 # Установка системных зависимостей
@@ -20,15 +20,23 @@ WORKDIR $HOME/app
 # Копирование requirements и установка зависимостей
 COPY --chown=user requirements.txt .
 
-# Установка Python зависимостей
-# Устанавливаем torch сначала для стабильности
+# Обновляем pip до последней версии
+RUN pip install --user --upgrade pip
+
+# Устанавливаем torch сначала для стабильности (CPU версия)
 RUN pip install --user --no-cache-dir torch>=2.0.0 --index-url https://download.pytorch.org/whl/cpu
 
 # Фиксируем версию numpy для совместимости
 RUN pip install --user --no-cache-dir "numpy<2.0.0"
 
-# Остальные зависимости
+# Принудительно устанавливаем sentence-transformers отдельно
+RUN pip install --user --no-cache-dir sentence-transformers==2.2.2
+
+# Устанавливаем остальные зависимости
 RUN pip install --user --no-cache-dir -r requirements.txt
+
+# Проверяем что sentence-transformers установлен
+RUN python -c "import sentence_transformers; print('✅ sentence-transformers OK')"
 
 # Копирование кода приложения
 COPY --chown=user backend/ .
@@ -54,5 +62,5 @@ ENV TORCH_HOME=$HOME/app/.cache
 # Порт для HuggingFace Spaces (обязательно 7860)
 EXPOSE 7860
 
-# Команда запуска
-CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "7860", "--workers", "1"]
+# Команда запуска с увеличенным timeout для Swagger UI
+CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "7860", "--workers", "1", "--timeout-keep-alive", "65"]
