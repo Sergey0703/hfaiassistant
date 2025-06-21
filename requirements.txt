@@ -45,3 +45,4 @@ jsonschema==4.20.0
 
 # Retry logic
 tenacity==8.2.3"" 
+"# Updated for HuggingFace Spaces" 
