@@ -28,7 +28,7 @@ class LlamaCppLLMService:
     
     def __init__(self, model_name: str = "TheBloke/Llama-2-7B-Chat-GGUF"):
         self.model_name = model_name
-        self.model_file = "llama-2-7b-chat.Q4_K_M.gguf"  # Оптимальный файл для CPU
+        self.model_file = "llama-2-7b-chat.q4_K_M.gguf"  # Оптимальный файл для CPU
         self.model = None
         self.service_type = "llamacpp_cpu_optimized"
         self.model_loaded = False
@@ -85,9 +85,9 @@ class LlamaCppLLMService:
             
             # Список файлов модели для попытки (от легких к тяжелым)
             model_files = [
-                "llama-2-7b-chat.Q4_K_S.gguf",  # Самый легкий
-                "llama-2-7b-chat.Q4_K_M.gguf",  # Средний (наш основной)
-                "llama-2-7b-chat.Q5_K_M.gguf",  # Более качественный
+                "llama-2-7b-chat.q4_K_S.gguf",  # Самый легкий
+                "llama-2-7b-chat.q4_K_M.gguf",  # Средний (наш основной)
+                "llama-2-7b-chat.q5_K_M.gguf",  # Более качественный
             ]
             
             for attempt, model_file in enumerate(model_files):
