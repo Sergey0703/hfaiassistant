@@ -1,4 +1,3 @@
-// File: src/components/URLScraper.tsx
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { 
@@ -12,7 +11,6 @@ import {
   ExternalLink 
 } from 'lucide-react';
 import axios from 'axios';
-import { API_ENDPOINTS, API_CONFIG } from '../config/api';
 
 interface ScrapeResult {
   url: string;
@@ -73,10 +71,7 @@ const URLScraper: React.FC = () => {
 
   const loadPredefinedSites = async (): Promise<void> => {
     try {
-      const response = await axios.get(API_ENDPOINTS.PREDEFINED_SITES, {
-        timeout: API_CONFIG.TIMEOUT,
-        headers: API_CONFIG.HEADERS
-      });
+      const response = await axios.get('/api/admin/predefined-sites');
       setPredefinedSites(response.data);
     } catch (error) {
       console.error('Error loading predefined sites:', error);
@@ -102,12 +97,9 @@ const URLScraper: React.FC = () => {
 
     setIsLoading(true);
     try {
-      const response = await axios.post(API_ENDPOINTS.SCRAPE_URL, {
+      const response = await axios.post('/api/admin/scrape/url', {
         url: url.trim(),
         category: category
-      }, {
-        timeout: API_CONFIG.TIMEOUT,
-        headers: API_CONFIG.HEADERS
       });
 
       const result: ScrapeResult = {
@@ -139,13 +131,10 @@ const URLScraper: React.FC = () => {
 
     setIsLoading(true);
     try {
-      const response = await axios.post(API_ENDPOINTS.SCRAPE_BULK, {
+      const response = await axios.post('/api/admin/scrape/bulk', {
         urls: validUrls,
         category: category,
         delay: 1.5
-      }, {
-        timeout: API_CONFIG.TIMEOUT,
-        headers: API_CONFIG.HEADERS
       });
 
       setResults(response.data.results || []);
@@ -168,12 +157,9 @@ const URLScraper: React.FC = () => {
   const scrapePredefined = async (): Promise<void> => {
     setIsLoading(true);
     try {
-      const response = await axios.post(API_ENDPOINTS.SCRAPE_PREDEFINED, {
+      const response = await axios.post('/api/admin/scrape/predefined', {
         country: selectedCountry,
         limit: 3  // Уменьшаем лимит для тестирования
-      }, {
-        timeout: API_CONFIG.TIMEOUT,
-        headers: API_CONFIG.HEADERS
       });
 
       setResults(response.data.results || []);

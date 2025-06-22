@@ -1,4 +1,3 @@
-// File: src/components/common/Notification.tsx
 import React from 'react';
 import { CheckCircle, AlertCircle, Info, AlertTriangle } from 'lucide-react';
 import { Notification as NotificationType } from '../../types/api';

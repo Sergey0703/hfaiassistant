@@ -1,4 +1,3 @@
-// File: src/components/admin/StatsCards.tsx
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { FileText, Users, FolderOpen } from 'lucide-react';

@@ -1,4 +1,3 @@
-// File: src/types/api.ts
 // API Response Types
 export interface ApiResponse<T = any> {
   message?: string;
@@ -85,6 +84,17 @@ export interface Notification {
 
 // Language Types
 export type SupportedLanguage = 'en' | 'uk';
+
+// API Endpoints enum
+export enum ApiEndpoints {
+  HEALTH = '/api/health',
+  CHAT = '/api/user/chat',
+  CHAT_HISTORY = '/api/user/chat/history',
+  DOCUMENTS_UPLOAD = '/api/admin/documents/upload',
+  DOCUMENTS_LIST = '/api/admin/documents',
+  DOCUMENTS_DELETE = '/api/admin/documents',
+  ADMIN_STATS = '/api/admin/stats'
+}
 
 // HTTP Methods
 export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';

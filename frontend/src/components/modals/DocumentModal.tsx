@@ -1,4 +1,3 @@
-// File: src/components/modals/DocumentModal.tsx
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Edit3, X } from 'lucide-react';

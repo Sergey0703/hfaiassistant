@@ -1,9 +1,8 @@
-// File: src/components/UserChat.tsx
 import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Send, Trash2, FileText, Loader } from 'lucide-react';
+import axios from 'axios';
 import { Message, ChatMessage, ChatResponse, ChatHistory } from '../types/api';
-import { API_ENDPOINTS, API_CONFIG } from '../config/api';
 
 const UserChat: React.FC = () => {
   const { t, i18n } = useTranslation();
@@ -27,30 +26,9 @@ const UserChat: React.FC = () => {
 
   const loadChatHistory = async (): Promise<void> => {
     try {
-      console.log('Loading chat history from:', API_ENDPOINTS.CHAT_HISTORY);
-      
-      const response = await fetch(API_ENDPOINTS.CHAT_HISTORY, {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json',
-        },
-        mode: 'cors',
-        credentials: 'omit',
-        cache: 'no-cache',
-      });
-
-      console.log('Response status:', response.status);
-      console.log('Response headers:', response.headers);
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const data: ChatHistory = await response.json();
-      console.log('Chat history data:', data);
-      
-      if (data.history) {
-        const formattedHistory: Message[] = data.history
+      const response = await axios.get<ChatHistory>('/api/user/chat/history');
+      if (response.data.history) {
+        const formattedHistory: Message[] = response.data.history
           .map(item => [
             { 
               type: 'user' as const, 
@@ -69,7 +47,6 @@ const UserChat: React.FC = () => {
       }
     } catch (error) {
       console.error('Error loading chat history:', error);
-      // Don't show error for history loading
     }
   };
 
@@ -91,51 +68,26 @@ const UserChat: React.FC = () => {
     setMessages(prev => [...prev, newUserMessage]);
 
     try {
-      console.log('Sending message to:', API_ENDPOINTS.CHAT);
-      
       const chatRequest: ChatMessage = {
         message: userMessage,
         language: i18n.language
       };
 
-      const response = await fetch(API_ENDPOINTS.CHAT, {
-        method: 'POST',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-        },
-        mode: 'cors',
-        credentials: 'omit',
-        cache: 'no-cache',
-        body: JSON.stringify(chatRequest),
-      });
-
-      console.log('Chat response status:', response.status);
-      console.log('Chat response headers:', response.headers);
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const data: ChatResponse = await response.json();
-      console.log('Chat response data:', data);
+      const response = await axios.post<ChatResponse>('/api/user/chat', chatRequest);
 
       // Add assistant response
       const assistantMessage: Message = {
         type: 'assistant',
-        content: data.response,
-        sources: data.sources || [],
+        content: response.data.response,
+        sources: response.data.sources || [],
         timestamp: new Date()
       };
 
       setMessages(prev => [...prev, assistantMessage]);
 
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error sending message:', error);
-      setError(error.message || t('chat.error'));
-      
-      // Remove user message if send failed
-      setMessages(prev => prev.slice(0, -1));
+      setError(t('chat.error'));
     } finally {
       setIsLoading(false);
     }
@@ -155,13 +107,6 @@ const UserChat: React.FC = () => {
 
   return (
     <div className="max-w-4xl mx-auto">
-      {/* Debug Info */}
-      <div className="bg-gray-100 rounded-lg p-4 mb-6 text-xs">
-        <div><strong>API Base:</strong> {API_CONFIG.BASE_URL}</div>
-        <div><strong>Chat Endpoint:</strong> {API_ENDPOINTS.CHAT}</div>
-        <div><strong>History Endpoint:</strong> {API_ENDPOINTS.CHAT_HISTORY}</div>
-      </div>
-
       {/* Header */}
       <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
         <div className="flex items-center justify-between">
@@ -182,7 +127,6 @@ const UserChat: React.FC = () => {
           {messages.length === 0 ? (
             <div className="text-center text-gray-500 py-8">
               <p>{t('chat.empty')}</p>
-              <p className="text-xs mt-2">Try sending a test message to check API connectivity</p>
             </div>
           ) : (
             messages.map((message, index) => (
@@ -232,8 +176,7 @@ const UserChat: React.FC = () => {
         {error && (
           <div className="px-6 pb-4">
             <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-              <strong>Error:</strong> {error}
-              <div className="text-xs mt-1">Check browser console for detailed logs</div>
+              {error}
             </div>
           </div>
         )}

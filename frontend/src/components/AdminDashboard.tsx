@@ -1,4 +1,3 @@
-// File: src/components/AdminDashboard.tsx
 import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { 
@@ -17,7 +16,6 @@ import {
   Notification as NotificationType,
   DOCUMENT_CATEGORIES 
 } from '../types/api';
-import { API_ENDPOINTS, API_CONFIG } from '../config/api';
 
 // Импорты компонентов
 import UploadModal from './modals/UploadModal';
@@ -76,14 +74,8 @@ const AdminDashboard: React.FC = () => {
     try {
       const timestamp = new Date().getTime();
       const [documentsResponse, statsResponse] = await Promise.all([
-        axios.get<DocumentsResponse>(`${API_ENDPOINTS.DOCUMENTS_LIST}?_t=${timestamp}`, {
-          timeout: API_CONFIG.TIMEOUT,
-          headers: API_CONFIG.HEADERS
-        }),
-        axios.get<AdminStats>(`${API_ENDPOINTS.ADMIN_STATS}?_t=${timestamp}`, {
-          timeout: API_CONFIG.TIMEOUT,
-          headers: API_CONFIG.HEADERS
-        })
+        axios.get<DocumentsResponse>(`/api/admin/documents?_t=${timestamp}`),
+        axios.get<AdminStats>(`/api/admin/stats?_t=${timestamp}`)
       ]);
       
       const docs = documentsResponse.data.documents || [];
@@ -180,9 +172,8 @@ const AdminDashboard: React.FC = () => {
       formData.append('file', file);
       formData.append('category', category);
 
-      const response = await axios.post(API_ENDPOINTS.DOCUMENTS_UPLOAD, formData, {
-        headers: API_CONFIG.UPLOAD_HEADERS,
-        timeout: API_CONFIG.TIMEOUT,
+      const response = await axios.post('/api/admin/documents/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
       });
 
       if (response.data) {
@@ -213,10 +204,7 @@ const AdminDashboard: React.FC = () => {
     if (!window.confirm(t('admin.documents.deleteConfirm'))) return;
 
     try {
-      await axios.delete(API_ENDPOINTS.DOCUMENTS_DELETE(docId), {
-        timeout: API_CONFIG.TIMEOUT,
-        headers: API_CONFIG.HEADERS
-      });
+      await axios.delete(`/api/admin/documents/${docId}`);
       showNotification(t('admin.documents.deleteSuccess'), 'success');
       
       const updatedDocs = documents.filter(doc => doc.id !== docId);

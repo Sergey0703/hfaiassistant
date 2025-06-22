@@ -1,4 +1,3 @@
-// File: src/components/modals/UploadModal.tsx
 import React, { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Upload, FileText, RefreshCw, X } from 'lucide-react';

@@ -1,11 +1,9 @@
-// File: src/App.tsx
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Home, MessageSquare, Settings, Globe } from 'lucide-react';
 import './App.css';
 import './i18n/i18n';
-import { API_CONFIG } from './config/api';
 
 // Components
 import UserChat from './components/UserChat';
@@ -45,12 +43,6 @@ const App: React.FC = () => {
                     {t('app.title')}
                   </span>
                 </Link>
-                
-                {/* API Status Info */}
-                <div className="ml-3 flex items-center space-x-2">
-                  <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
-                  <span className="text-xs text-blue-600">Ready</span>
-                </div>
               </div>
 
               {/* Navigation Links */}
@@ -96,20 +88,6 @@ const App: React.FC = () => {
           </div>
         </nav>
 
-        {/* Info Banner */}
-        <div className="bg-blue-50 border-l-4 border-blue-400 p-4">
-          <div className="flex">
-            <div className="ml-3">
-              <p className="text-sm text-blue-700">
-                🚀 Connected to backend: {API_CONFIG.BASE_URL}
-              </p>
-              <p className="text-xs text-blue-600 mt-1">
-                Status checking disabled - functionality will be verified on first use
-              </p>
-            </div>
-          </div>
-        </div>
-
         {/* Main Content */}
         <main className="max-w-7xl mx-auto py-6 px-4">
           <Routes>
@@ -124,9 +102,6 @@ const App: React.FC = () => {
           <div className="max-w-7xl mx-auto py-6 px-4">
             <div className="text-center text-gray-500 text-sm">
               {t('footer.copyright')}
-              <div className="mt-1 text-xs">
-                <span>Backend API: {API_CONFIG.BASE_URL}</span>
-              </div>
             </div>
           </div>
         </footer>
