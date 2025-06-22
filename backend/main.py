@@ -2,6 +2,7 @@
 """
 Legal Assistant API - Main Application Entry Point
 Полный стек: FastAPI Backend + React Frontend + GPTQ Model + ChromaDB
+ИСПРАВЛЕНИЯ: Правильная раздача React статических файлов
 """
 
 import uvicorn
@@ -230,225 +231,200 @@ except Exception as e:
     )
 
 # ====================================
-# КРИТИЧЕСКИЕ ENDPOINTS ДЛЯ ДИАГНОСТИКИ
+# ИСПРАВЛЕНИЯ ДЛЯ REACT SPA
+# ====================================
+
+# Импортируем необходимые модули для статических файлов
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+from pathlib import Path
+
+# ИСПРАВЛЕНИЕ: Правильные пути для HF Spaces
+REACT_STATIC_PATH = Path("/home/user/app/static")
+REACT_INDEX_PATH = REACT_STATIC_PATH / "index.html"
+
+# МОНТИРУЕМ СТАТИЧЕСКИЕ ФАЙЛЫ
+try:
+    if REACT_STATIC_PATH.exists():
+        # Монтируем статические файлы React (JS, CSS, images)
+        app.mount("/static", StaticFiles(directory=str(REACT_STATIC_PATH)), name="react_static")
+        print(f"✅ React static files mounted from: {REACT_STATIC_PATH}")
+    else:
+        print(f"⚠️ React static path not found: {REACT_STATIC_PATH}")
+except Exception as e:
+    print(f"⚠️ Could not mount static files: {e}")
+
+# ====================================
+# ИСПРАВЛЕННЫЕ ENDPOINTS ДЛЯ REACT
 # ====================================
 
 @app.get("/")
 async def root():
-    """Корневой роут - проверяем React или показываем API info"""
-    from pathlib import Path
-    import os
-    
-    # Попытка найти React build - ИСПРАВЛЕННЫЕ ПУТИ ДЛЯ HF SPACES
-    possible_react_paths = [
-        Path("/home/user/app/static/index.html"),        # Основной путь HF Spaces
-        Path("./static/index.html"),                     # Относительный путь
-        Path("static/index.html"),                       # Простой путь
-        Path("/home/user/app/frontend/build/index.html"), # Fallback
-        Path("./frontend/build/index.html"),
-        Path("frontend/build/index.html")
-    ]
-    
-    react_build_path = None
-    for path in possible_react_paths:
-        if path.exists():
-            react_build_path = path
-            break
-    
-    if react_build_path and react_build_path.exists():
-        # Если React есть, возвращаем его
-        from fastapi.responses import FileResponse
-        return FileResponse(react_build_path, media_type="text/html")
-    else:
-        # Если React нет, показываем информацию
+    """ИСПРАВЛЕННЫЙ корневой роут - возвращает React index.html"""
+    try:
+        if REACT_INDEX_PATH.exists():
+            return FileResponse(
+                path=str(REACT_INDEX_PATH), 
+                media_type="text/html",
+                filename="index.html"
+            )
+        else:
+            # Fallback если index.html не найден
+            return {
+                "message": "Legal Assistant API",
+                "version": "2.0.0", 
+                "status": "API работает ✅",
+                "react_status": f"React index.html не найден: {REACT_INDEX_PATH}",
+                "available_endpoints": {
+                    "api_docs": "/docs",
+                    "api_info": "/api-info", 
+                    "debug": "/debug-react",
+                    "health": "/health",
+                    "startup_progress": "/startup-progress"
+                },
+                "platform": "HuggingFace Spaces",
+                "instructions": [
+                    "React files should be in /home/user/app/static/",
+                    "Check /debug-react for detailed diagnosis",
+                    "Try /docs for API documentation"
+                ]
+            }
+    except Exception as e:
+        logger.error(f"Root endpoint error: {e}")
         return {
-            "message": "Legal Assistant API",
-            "version": "2.0.0", 
-            "status": "API работает ✅",
-            "react_status": "React SPA не найден ❌",
-            "available_endpoints": {
-                "api_docs": "/docs",
-                "api_info": "/api-info", 
-                "debug": "/debug-react",
-                "health": "/health",
-                "startup_progress": "/startup-progress"
-            },
-            "react_paths_checked": [str(p) for p in possible_react_paths],
-            "react_exists": react_build_path is not None,
-            "space_id": os.getenv("SPACE_ID"),
-            "working_directory": os.getcwd(),
-            "instructions": [
-                "1. Проверьте /debug-react для полной диагностики",
-                "2. Убедитесь что frontend/build/ скопирован в Docker",
-                "3. Попробуйте /docs для API документации",
-                "4. React build должен быть в /home/user/app/frontend/build/"
-            ],
-            "platform": "HuggingFace Spaces" if os.getenv("SPACE_ID") else "Local"
+            "error": f"Error serving React app: {e}",
+            "fallback": "API is working",
+            "docs": "/docs"
         }
+
+# ДОПОЛНИТЕЛЬНЫЕ REACT ФАЙЛЫ
+@app.get("/manifest.json")
+async def serve_manifest():
+    """Serve React manifest.json"""
+    manifest_path = REACT_STATIC_PATH / "manifest.json"
+    if manifest_path.exists():
+        return FileResponse(manifest_path, media_type="application/json")
+    return {"error": "manifest.json not found"}
+
+@app.get("/favicon.ico")
+async def serve_favicon():
+    """Serve React favicon"""
+    favicon_path = REACT_STATIC_PATH / "favicon.ico"
+    if favicon_path.exists():
+        return FileResponse(favicon_path, media_type="image/x-icon")
+    return {"error": "favicon.ico not found"}
+
+@app.get("/robots.txt")
+async def serve_robots():
+    """Serve robots.txt"""
+    robots_path = REACT_STATIC_PATH / "robots.txt"
+    if robots_path.exists():
+        return FileResponse(robots_path, media_type="text/plain")
+    return {"error": "robots.txt not found"}
 
 @app.get("/api-info")
 async def api_info():
-    """Информация о статусе API и React"""
-    import os
-    from pathlib import Path
+    """ИСПРАВЛЕННАЯ информация о статусе API и React"""
+    react_files_info = {}
     
-    # Проверяем React build - ОБНОВЛЕННЫЕ ПУТИ ДЛЯ HF SPACES
-    possible_react_paths = [
-        Path("/home/user/app/static"),          # Основной путь HF Spaces  
-        Path("./static"),                       # Относительный путь
-        Path("static"),                         # Простой путь
-        Path("/home/user/app/frontend/build"),  # Fallback
-        Path("./frontend/build"),
-        Path("frontend/build")
-    ]
-    
-    react_status = "not_found"
-    react_path = None
-    react_files = []
-    react_details = {}
-    
-    for path in possible_react_paths:
-        if path.exists():
-            react_status = "found"
-            react_path = str(path)
-            try:
-                react_files = [f.name for f in path.iterdir()]
-                react_details = {
-                    "has_index_html": (path / "index.html").exists(),
-                    "has_static_dir": (path / "static").exists(),
-                    "total_files": len(react_files)
-                }
-                
-                # Проверяем статические файлы
-                if react_details["has_static_dir"]:
-                    static_path = path / "static"
-                    static_files = list(static_path.glob("**/*"))
-                    react_details["static_files_count"] = len(static_files)
-                    react_details["has_js_files"] = any(f.suffix == '.js' for f in static_files)
-                    react_details["has_css_files"] = any(f.suffix == '.css' for f in static_files)
-                    
-            except Exception as e:
-                react_files = [f"error_reading_directory: {e}"]
-            break
+    try:
+        if REACT_STATIC_PATH.exists():
+            react_files = list(REACT_STATIC_PATH.iterdir())
+            react_files_info = {
+                "react_path": str(REACT_STATIC_PATH),
+                "react_exists": True,
+                "index_html_exists": REACT_INDEX_PATH.exists(),
+                "index_html_path": str(REACT_INDEX_PATH),
+                "total_files": len(react_files),
+                "files": [f.name for f in react_files[:10]]  # Первые 10 файлов
+            }
+            
+            if REACT_INDEX_PATH.exists():
+                react_files_info["index_html_size"] = REACT_INDEX_PATH.stat().st_size
+        else:
+            react_files_info = {
+                "react_path": str(REACT_STATIC_PATH),
+                "react_exists": False,
+                "error": f"React directory not found: {REACT_STATIC_PATH}"
+            }
+    except Exception as e:
+        react_files_info = {"error": f"Error checking React files: {e}"}
     
     return {
         "api": "Legal Assistant API v2.0",
         "status": "running",
-        "react_status": react_status,
-        "react_path": react_path,
-        "react_files": react_files[:10],  # First 10 files
-        "react_details": react_details,
-        "environment": "HuggingFace Spaces",
+        "platform": "HuggingFace Spaces",
         "space_id": os.getenv("SPACE_ID", "unknown"),
         "working_directory": os.getcwd(),
-        "python_path": sys.path[:3],
+        "react_info": react_files_info,
         "endpoints": {
+            "root": "/",
             "docs": "/docs",
             "health": "/health",
             "debug": "/debug-react",
             "startup": "/startup-progress"
         },
-        "recommendations": [
-            "Check /debug-react for full path analysis",
-            "Ensure Docker correctly copied React build files",
-            "React should be in /home/user/app/frontend/build/",
-            "Try /docs if React is not available"
-        ]
+        "static_files": {
+            "mounted": str(REACT_STATIC_PATH) if REACT_STATIC_PATH.exists() else "Not mounted",
+            "mount_point": "/static"
+        }
     }
 
 @app.get("/debug-react")
 async def debug_react():
-    """Полная диагностика React"""
-    import os
-    from pathlib import Path
-    
+    """ИСПРАВЛЕННАЯ полная диагностика React"""
     debug_info = {
         "current_directory": os.getcwd(),
-        "script_location": str(Path(__file__).parent),
         "environment": {
             "SPACE_ID": os.getenv("SPACE_ID"),
             "HOME": os.getenv("HOME"),
-            "PWD": os.getenv("PWD"),
-            "USER": os.getenv("USER")
+            "PWD": os.getenv("PWD")
+        },
+        "react_paths": {
+            "static_path": str(REACT_STATIC_PATH),
+            "index_path": str(REACT_INDEX_PATH),
+            "static_exists": REACT_STATIC_PATH.exists(),
+            "index_exists": REACT_INDEX_PATH.exists()
         }
     }
     
-    # Проверяем все возможные пути
-    paths_to_check = [
-        "/home/user/app/frontend/build",
-        "/home/user/app/frontend", 
-        "./frontend/build",
-        "./frontend",
-        "/app/frontend/build",
-        "/app/frontend",
-        "frontend",
-        "build",
-        "/home/user/app"
-    ]
-    
-    debug_info["path_checks"] = []
-    
-    for path_str in paths_to_check:
-        path = Path(path_str)
-        path_info = {
-            "path": path_str,
-            "absolute_path": str(path.absolute()) if path.exists() else "N/A",
-            "exists": path.exists(),
-            "is_dir": path.is_dir() if path.exists() else False,
-            "is_file": path.is_file() if path.exists() else False
-        }
-        
-        if path.exists():
-            try:
-                if path.is_dir():
-                    files = list(path.iterdir())
-                    file_names = [f.name for f in files]
-                    path_info["files"] = file_names[:15]  # First 15 files
-                    path_info["total_files"] = len(files)
-                    
-                    # Check for key React files
-                    if "index.html" in file_names:
-                        path_info["has_index_html"] = True
-                        index_path = path / "index.html"
-                        path_info["index_html_size"] = index_path.stat().st_size
-                        
-                    if "static" in file_names:
-                        path_info["has_static_dir"] = True
-                        static_path = path / "static"
-                        if static_path.exists() and static_path.is_dir():
-                            static_files = list(static_path.rglob("*"))
-                            path_info["static_files_count"] = len(static_files)
-                            path_info["static_files_sample"] = [f.name for f in static_files[:10]]
-                            
-                    # Check for package.json
-                    if "package.json" in file_names:
-                        path_info["has_package_json"] = True
-                        
-                elif path.is_file():
-                    path_info["file_size"] = path.stat().st_size
-                    path_info["file_extension"] = path.suffix
-                    
-            except Exception as e:
-                path_info["error"] = str(e)
-        
-        debug_info["path_checks"].append(path_info)
-    
-    # Проверяем переменные Docker
-    debug_info["docker_info"] = {
-        "is_docker": os.path.exists("/.dockerenv"),
-        "hostname": os.uname().nodename if hasattr(os, 'uname') else "unknown"
-    }
+    # Проверяем содержимое static директории
+    if REACT_STATIC_PATH.exists():
+        try:
+            files = list(REACT_STATIC_PATH.iterdir())
+            debug_info["static_contents"] = {
+                "total_files": len(files),
+                "files": [
+                    {
+                        "name": f.name,
+                        "is_file": f.is_file(),
+                        "is_dir": f.is_dir(),
+                        "size": f.stat().st_size if f.is_file() else None
+                    } for f in files
+                ]
+            }
+            
+            # Специально проверяем index.html
+            if REACT_INDEX_PATH.exists():
+                with open(REACT_INDEX_PATH, 'r') as f:
+                    content = f.read()
+                debug_info["index_html"] = {
+                    "exists": True,
+                    "size": len(content),
+                    "content_preview": content[:200] + "..." if len(content) > 200 else content
+                }
+            else:
+                debug_info["index_html"] = {"exists": False}
+                
+        except Exception as e:
+            debug_info["static_contents"] = {"error": str(e)}
     
     return debug_info
 
 @app.get("/startup-progress") 
 async def startup_progress():
-    """Статус загрузки приложения"""
-    from pathlib import Path
-    
-    # Проверяем React
-    react_path = Path("/home/user/app/frontend/build")
-    react_ready = react_path.exists() and (react_path / "index.html").exists()
+    """ИСПРАВЛЕННЫЙ статус загрузки приложения"""
+    react_ready = REACT_INDEX_PATH.exists()
     
     return {
         "status": "running",
@@ -461,7 +437,7 @@ async def startup_progress():
             "react_spa": {
                 "status": "ready" if react_ready else "not_found",
                 "description": "React frontend application",
-                "path": str(react_path),
+                "path": str(REACT_INDEX_PATH),
                 "ready": react_ready
             },
             "model": {
@@ -469,38 +445,30 @@ async def startup_progress():
                 "description": "GPTQ model loading in background"
             }
         },
-        "progress": "75%" if react_ready else "50%",
-        "message": "API готов, React SPA проверяется...",
-        "endpoints_working": ["/docs", "/api-info", "/debug-react", "/health"],
-        "next_steps": [
-            "Check /debug-react for React build location",
-            "Verify Docker copied frontend/build correctly",
-            "Try /docs for API documentation"
-        ]
+        "progress": "100%" if react_ready else "75%",
+        "message": "React SPA готов!" if react_ready else "React SPA проверяется...",
+        "endpoints_working": ["/", "/docs", "/api-info", "/debug-react", "/health"],
+        "static_files_mounted": REACT_STATIC_PATH.exists()
     }
 
 # Быстрый health check для deployment
 @app.get("/health")
 async def health_check():
-    """Быстрая проверка здоровья"""
+    """ИСПРАВЛЕННАЯ быстрая проверка здоровья"""
     try:
         import asyncio
         return await asyncio.wait_for({
             "status": "healthy", 
             "version": "2.0.0",
-            "platform": "HuggingFace Spaces" if os.getenv("SPACE_ID") else "Local",
+            "platform": "HuggingFace Spaces",
             "gptq_model": "TheBloke/Llama-2-7B-Chat-GPTQ",
-            "react_spa": "Checking...",
+            "react_spa": "Ready" if REACT_INDEX_PATH.exists() else "Not found",
+            "static_files": "Mounted" if REACT_STATIC_PATH.exists() else "Not mounted",
             "lazy_loading": True,
             "memory_optimized": True,
             "cors_fix_applied": True,
             "post_endpoints_working": True,
             "timeout_protected": True,
-            "timeout_limits": {
-                "global": f"{GLOBAL_REQUEST_TIMEOUT}s",
-                "gptq_loading": f"{GPTQ_MODEL_LOADING_TIMEOUT}s",
-                "health_check": "15s"
-            },
             "timestamp": __import__("time").time(),
             "available_endpoints": ["/", "/docs", "/api-info", "/debug-react"]
         }, timeout=15)
@@ -508,61 +476,8 @@ async def health_check():
         return {
             "status": "timeout",
             "timeout_limit": "15s",
-            "global_timeout": f"{GLOBAL_REQUEST_TIMEOUT}s",
             "message": "Health check timeout - services may be loading"
         }
-
-# Статические файлы React (если найдены) - ИСПРАВЛЕННЫЕ ПУТИ
-try:
-    from fastapi.staticfiles import StaticFiles
-    from pathlib import Path
-    
-    # ПРИОРИТЕТНЫЕ ПУТИ ДЛЯ HF SPACES
-    react_static_paths = [
-        Path("/home/user/app/static/static"),     # Основной путь HF Spaces
-        Path("./static/static"),                  # Относительный путь
-        Path("/home/user/app/frontend/build/static"),  # Fallback
-    ]
-    
-    react_static_path = None
-    for path in react_static_paths:
-        if path.exists():
-            react_static_path = path
-            break
-    
-    if react_static_path:
-        app.mount("/static", StaticFiles(directory=react_static_path), name="react_static")
-        print(f"✅ React static files mounted from: {react_static_path}")
-    
-    # Дополнительные React файлы
-    react_build_paths = [
-        Path("/home/user/app/static"),
-        Path("./static"),
-        Path("/home/user/app/frontend/build"),
-    ]
-    
-    react_build_path = None
-    for path in react_build_paths:
-        if path.exists() and (path / "index.html").exists():
-            react_build_path = path
-            break
-    
-    if react_build_path:
-        react_files = ["manifest.json", "favicon.ico", "robots.txt", "logo192.png", "logo512.png"]
-        
-        for file_name in react_files:
-            file_path = react_build_path / file_name
-            if file_path.exists():
-                @app.get(f"/{file_name}", include_in_schema=False)
-                async def serve_react_file(filename=file_name):
-                    from fastapi.responses import FileResponse
-                    return FileResponse(react_build_path / filename)
-                
-        print(f"✅ React build path found: {react_build_path}")
-        print(f"✅ React assets available: {[f for f in react_files if (react_build_path / f).exists()]}")
-        
-except Exception as e:
-    print(f"⚠️ Could not mount React static files: {e}")
 
 if __name__ == "__main__":
     main()
