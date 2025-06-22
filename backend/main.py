@@ -1,7 +1,7 @@
-# backend/main.py - ПОЛНАЯ ВЕРСИЯ ДЛЯ HUGGINGFACE SPACES + REACT SPA
+# backend/main.py - ИСПРАВЛЕННАЯ ВЕРСИЯ С ПРАВИЛЬНЫМ ПОРЯДКОМ МАРШРУТОВ
 """
 Legal Assistant API - Main Application Entry Point
-Полный стек: FastAPI Backend + React Frontend + GPTQ Model + ChromaDB
+ИСПРАВЛЕНО: Правильный порядок монтирования для React SPA
 """
 
 import uvicorn
@@ -230,7 +230,7 @@ except Exception as e:
     )
 
 # ====================================
-# API ENDPOINTS (ДО МОНТИРОВАНИЯ СТАТИКИ)
+# API ENDPOINTS - ОПРЕДЕЛЯЕМ ПЕРВЫМИ!
 # ====================================
 
 @app.get("/api-info")
@@ -405,30 +405,26 @@ async def health_check():
             "message": "Health check timeout - services may be loading"
         }
 
-# Статические файлы React (если найдены) - ИСПРАВЛЕННЫЕ ПУТИ
+# ====================================
+# СТАТИЧЕСКИЕ ФАЙЛЫ - МОНТИРУЕМ ПОСЛЕ API!
+# ====================================
+
+# Статические файлы React (если найдены) - ПРАВИЛЬНЫЙ ПОРЯДОК
 try:
     from fastapi.staticfiles import StaticFiles
     from fastapi.responses import FileResponse
     from pathlib import Path
     
-    # ПРИОРИТЕТНЫЕ ПУТИ ДЛЯ HF SPACES
-    react_static_paths = [
-        Path("/home/user/app/static/static"),     # Основной путь HF Spaces для CSS/JS
-        Path("./static/static"),                  # Относительный путь
-        Path("/home/user/app/frontend/build/static"),  # Fallback
-    ]
+    # Путь к static файлам (CSS, JS, images)
+    react_static_files_path = Path("/home/user/app/static/static")
     
-    react_static_path = None
-    for path in react_static_paths:
-        if path.exists():
-            react_static_path = path
-            break
+    if react_static_files_path.exists():
+        app.mount("/static", StaticFiles(directory=react_static_files_path), name="react_static")
+        print(f"✅ React static files mounted from: {react_static_files_path}")
+    else:
+        print(f"⚠️ React static files not found at: {react_static_files_path}")
     
-    if react_static_path:
-        app.mount("/static", StaticFiles(directory=react_static_path), name="react_static")
-        print(f"✅ React static files mounted from: {react_static_path}")
-    
-    # ДОПОЛНИТЕЛЬНЫЕ ПУТИ ДЛЯ HF SPACES
+    # Дополнительные React assets
     REACT_BUILD_PATH = Path("/home/user/app/static")
     
     if REACT_BUILD_PATH.exists():
@@ -437,10 +433,13 @@ try:
         for file_name in react_files:
             file_path = REACT_BUILD_PATH / file_name
             if file_path.exists():
-                @app.get(f"/{file_name}", include_in_schema=False)
-                async def serve_react_file(filename=file_name):
-                    from fastapi.responses import FileResponse
-                    return FileResponse(REACT_BUILD_PATH / filename)
+                # Создаем endpoint для каждого asset файла
+                def create_asset_endpoint(filename):
+                    async def serve_asset():
+                        return FileResponse(REACT_BUILD_PATH / filename)
+                    return serve_asset
+                
+                app.get(f"/{file_name}", include_in_schema=False)(create_asset_endpoint(file_name))
                 
         print(f"✅ React build path found: {REACT_BUILD_PATH}")
         print(f"✅ React assets available: {[f for f in react_files if (REACT_BUILD_PATH / f).exists()]}")
@@ -449,7 +448,7 @@ except Exception as e:
     print(f"⚠️ Could not mount React static files: {e}")
 
 # ====================================
-# МОНТИРОВАНИЕ REACT SPA КАК КОРНЕВОГО МАРШРУТА
+# КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: SPA МАРШРУТ ПОСЛЕДНИМ!
 # ====================================
 
 try:
@@ -462,14 +461,16 @@ try:
         print(f"🔧 Mounting React SPA from {REACT_STATIC_PATH}")
         
         # КРИТИЧЕСКИ ВАЖНО: Монтируем React как корневой маршрут ПОСЛЕДНИМ
+        # Это позволяет API endpoints работать, а все остальные запросы идут в React
         app.mount("/", StaticFiles(directory=str(REACT_STATIC_PATH), html=True), name="react_spa")
         
         print("✅ React SPA successfully mounted as root route!")
         print("✅ Main page should now serve React instead of JSON")
+        print("✅ API endpoints (/docs, /health, /api-info) will still work")
         
     else:
         print(f"❌ React files not found at {REACT_STATIC_PATH}")
-        print("⚠️ Main page will show API JSON instead of React")
+        print("⚠️ Main page will show fallback message")
         
         # FALLBACK: если React не найден, добавляем простой корневой маршрут
         @app.get("/")
@@ -520,3 +521,4 @@ else:
     print("⚛️ React SPA integrated and ready")
     print(f"🛡️ All requests protected by comprehensive timeout system")
     print(f"⏰ GPTQ model loading: up to {GPTQ_FIRST_LOAD_TIMEOUT//60} minutes first time")
+    print("🔧 ИСПРАВЛЕНО: API endpoints определены ПЕРЕД монтированием SPA")
