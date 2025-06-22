@@ -1,8 +1,7 @@
-# backend/main.py - ПОЛНАЯ ВЕРСИЯ ДЛЯ HUGGINGFACE SPACES + REACT SPA
+# backend/main.py - ИСПРАВЛЕННАЯ ВЕРСИЯ ПО ДОКУМЕНТАЦИИ HF SPACES
 """
 Legal Assistant API - Main Application Entry Point
-Полный стек: FastAPI Backend + React Frontend + GPTQ Model + ChromaDB
-ИСПРАВЛЕНИЯ: Правильная раздача React статических файлов
+ИСПРАВЛЕНИЯ: Правильное монтирование React согласно документации HuggingFace Spaces
 """
 
 import uvicorn
@@ -57,15 +56,10 @@ def main():
     try:
         if banner_available:
             print_startup_banner()
-            
-            # Проверяем окружение
             is_hf_spaces = check_hf_spaces_environment()
             print()
-            
-            # Создаем директории
             create_necessary_directories()
             
-            # Проверяем зависимости
             if not check_critical_dependencies():
                 print("\n❌ Cannot start due to missing critical dependencies")
                 sys.exit(1)
@@ -79,7 +73,6 @@ def main():
         if banner_available:
             app = create_app_for_deployment()
         else:
-            # Fallback app creation
             app = create_basic_app()
         
         if app is None:
@@ -96,47 +89,27 @@ def main():
         print(f"   • Environment: {'HuggingFace Spaces' if is_hf_spaces else 'Local'}")
         print(f"   • Model: TheBloke/Llama-2-7B-Chat-GPTQ")
         print(f"   • React SPA: Enabled")
-        print(f"   • Lazy Loading: Enabled")
-        print(f"   • CORS Fix: Applied")
-        print(f"   • Comprehensive Timeouts: Enabled")
         
-        print(f"\n🔗 Available Endpoints:")
-        print(f"   • React App: http://localhost:{port}/")
-        print(f"   • API Docs: http://localhost:{port}/docs")
-        print(f"   • Health Check: http://localhost:{port}/health")
-        print(f"   • Debug React: http://localhost:{port}/debug-react")
-        print(f"   • API Info: http://localhost:{port}/api-info")
-        
-        print(f"\n⏰ Timeout Configuration:")
-        print(f"   • Global Request: {GLOBAL_REQUEST_TIMEOUT}s (10 min)")
-        print(f"   • GPTQ Loading: {GPTQ_MODEL_LOADING_TIMEOUT}s (8 min)")
-        print(f"   • GPTQ First Load: {GPTQ_FIRST_LOAD_TIMEOUT}s (10 min)")
-        print(f"   • Keep-Alive: {KEEP_ALIVE_TIMEOUT}s")
-        
-        print(f"\n🎯 Starting server with comprehensive timeout protection and React SPA...")
-        print("=" * 70)
-        
-        # Запускаем сервер с правильными таймаутами
+        # Запускаем сервер
         uvicorn.run(
             "main:app",
             host=host,
             port=port,
             log_level="info",
-            reload=False,  # Отключаем reload в production
+            reload=False,
             access_log=True,
             server_header=False,
             date_header=False,
-            workers=1,  # Важно: только 1 worker для HF Spaces и GPTQ
+            workers=1,
             timeout_keep_alive=KEEP_ALIVE_TIMEOUT,
             timeout_graceful_shutdown=GRACEFUL_TIMEOUT,
-            limit_concurrency=5,  # Ограничиваем для GPTQ модели
-            limit_max_requests=500,  # Лимит для memory management
+            limit_concurrency=5,
+            limit_max_requests=500,
             timeout_notify=GRACEFUL_TIMEOUT,
         )
         
     except KeyboardInterrupt:
         print("\n\n👋 Legal Assistant API shutting down...")
-        print("Thank you for using Legal Assistant!")
         
     except Exception as e:
         logger.error(f"Application startup failed: {e}", exc_info=True)
@@ -154,7 +127,6 @@ def create_basic_app():
         description="AI Legal Assistant with GPTQ Model"
     )
     
-    # CORS
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -172,7 +144,6 @@ def create_basic_app():
 try:
     print("🚀 Initializing Legal Assistant API for HuggingFace Spaces...")
     
-    # Проверяем и настраиваем HF Spaces
     is_hf_spaces = os.getenv("SPACE_ID") is not None
     
     if banner_available:
@@ -180,11 +151,9 @@ try:
         create_necessary_directories()
         app = create_app_for_deployment()
     else:
-        # Fallback создание приложения
         from app import create_app
         app = create_app()
         
-        # Добавляем CORS
         from fastapi.middleware.cors import CORSMiddleware
         app.add_middleware(
             CORSMiddleware,
@@ -200,19 +169,11 @@ try:
     print(f"🌍 Platform: {'HuggingFace Spaces' if is_hf_spaces else 'Local'}")
     print("🤖 GPTQ Model: TheBloke/Llama-2-7B-Chat-GPTQ")
     print("⚛️ React Frontend: Integrated")
-    print("🔄 Initialization: Lazy loading enabled")
-    print(f"⏰ Request Timeout: {GLOBAL_REQUEST_TIMEOUT}s")
-    print(f"🔄 Keep-Alive: {KEEP_ALIVE_TIMEOUT}s")
-    print(f"🤖 GPTQ Loading: {GPTQ_MODEL_LOADING_TIMEOUT}s")
-    print("🔧 CORS Fix: Applied (POST endpoints working)")
-    print("🛡️ Comprehensive Timeout Protection: Active")
-    print("📱 Single Page Application: React SPA Ready")
     
 except Exception as e:
     print(f"❌ Deployment initialization failed: {e}")
     print("🔄 Creating minimal fallback application...")
     
-    # Улучшенное fallback приложение
     from fastapi import FastAPI
     from fastapi.middleware.cors import CORSMiddleware
     
@@ -222,7 +183,6 @@ except Exception as e:
         description="Minimal recovery mode - some services may be unavailable"
     )
     
-    # КРИТИЧЕСКИ ВАЖНО: CORS даже в fallback
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -231,100 +191,23 @@ except Exception as e:
     )
 
 # ====================================
-# ИСПРАВЛЕНИЯ ДЛЯ REACT SPA
+# ПРАВИЛЬНАЯ НАСТРОЙКА REACT SPA ПО ДОКУМЕНТАЦИИ HF SPACES
 # ====================================
 
-# Импортируем необходимые модули для статических файлов
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from pathlib import Path
 
-# ИСПРАВЛЕНИЕ: Правильные пути для HF Spaces
+# Путь к React файлам
 REACT_STATIC_PATH = Path("/home/user/app/static")
-REACT_INDEX_PATH = REACT_STATIC_PATH / "index.html"
-
-# МОНТИРУЕМ СТАТИЧЕСКИЕ ФАЙЛЫ
-try:
-    if REACT_STATIC_PATH.exists():
-        # Монтируем статические файлы React (JS, CSS, images)
-        app.mount("/static", StaticFiles(directory=str(REACT_STATIC_PATH)), name="react_static")
-        print(f"✅ React static files mounted from: {REACT_STATIC_PATH}")
-    else:
-        print(f"⚠️ React static path not found: {REACT_STATIC_PATH}")
-except Exception as e:
-    print(f"⚠️ Could not mount static files: {e}")
 
 # ====================================
-# ИСПРАВЛЕННЫЕ ENDPOINTS ДЛЯ REACT
+# СНАЧАЛА ВСЕ API ENDPOINTS
 # ====================================
-
-@app.get("/")
-async def root():
-    """ИСПРАВЛЕННЫЙ корневой роут - возвращает React index.html"""
-    try:
-        if REACT_INDEX_PATH.exists():
-            return FileResponse(
-                path=str(REACT_INDEX_PATH), 
-                media_type="text/html",
-                filename="index.html"
-            )
-        else:
-            # Fallback если index.html не найден
-            return {
-                "message": "Legal Assistant API",
-                "version": "2.0.0", 
-                "status": "API работает ✅",
-                "react_status": f"React index.html не найден: {REACT_INDEX_PATH}",
-                "available_endpoints": {
-                    "api_docs": "/docs",
-                    "api_info": "/api-info", 
-                    "debug": "/debug-react",
-                    "health": "/health",
-                    "startup_progress": "/startup-progress"
-                },
-                "platform": "HuggingFace Spaces",
-                "instructions": [
-                    "React files should be in /home/user/app/static/",
-                    "Check /debug-react for detailed diagnosis",
-                    "Try /docs for API documentation"
-                ]
-            }
-    except Exception as e:
-        logger.error(f"Root endpoint error: {e}")
-        return {
-            "error": f"Error serving React app: {e}",
-            "fallback": "API is working",
-            "docs": "/docs"
-        }
-
-# ДОПОЛНИТЕЛЬНЫЕ REACT ФАЙЛЫ
-@app.get("/manifest.json")
-async def serve_manifest():
-    """Serve React manifest.json"""
-    manifest_path = REACT_STATIC_PATH / "manifest.json"
-    if manifest_path.exists():
-        return FileResponse(manifest_path, media_type="application/json")
-    return {"error": "manifest.json not found"}
-
-@app.get("/favicon.ico")
-async def serve_favicon():
-    """Serve React favicon"""
-    favicon_path = REACT_STATIC_PATH / "favicon.ico"
-    if favicon_path.exists():
-        return FileResponse(favicon_path, media_type="image/x-icon")
-    return {"error": "favicon.ico not found"}
-
-@app.get("/robots.txt")
-async def serve_robots():
-    """Serve robots.txt"""
-    robots_path = REACT_STATIC_PATH / "robots.txt"
-    if robots_path.exists():
-        return FileResponse(robots_path, media_type="text/plain")
-    return {"error": "robots.txt not found"}
 
 @app.get("/api-info")
 async def api_info():
-    """ИСПРАВЛЕННАЯ информация о статусе API и React"""
+    """Информация о статусе API и React"""
     react_files_info = {}
     
     try:
@@ -333,14 +216,10 @@ async def api_info():
             react_files_info = {
                 "react_path": str(REACT_STATIC_PATH),
                 "react_exists": True,
-                "index_html_exists": REACT_INDEX_PATH.exists(),
-                "index_html_path": str(REACT_INDEX_PATH),
+                "index_html_exists": (REACT_STATIC_PATH / "index.html").exists(),
                 "total_files": len(react_files),
-                "files": [f.name for f in react_files[:10]]  # Первые 10 файлов
+                "files": [f.name for f in react_files[:10]]
             }
-            
-            if REACT_INDEX_PATH.exists():
-                react_files_info["index_html_size"] = REACT_INDEX_PATH.stat().st_size
         else:
             react_files_info = {
                 "react_path": str(REACT_STATIC_PATH),
@@ -361,18 +240,13 @@ async def api_info():
             "root": "/",
             "docs": "/docs",
             "health": "/health",
-            "debug": "/debug-react",
-            "startup": "/startup-progress"
-        },
-        "static_files": {
-            "mounted": str(REACT_STATIC_PATH) if REACT_STATIC_PATH.exists() else "Not mounted",
-            "mount_point": "/static"
+            "debug": "/debug-react"
         }
     }
 
 @app.get("/debug-react")
 async def debug_react():
-    """ИСПРАВЛЕННАЯ полная диагностика React"""
+    """Полная диагностика React"""
     debug_info = {
         "current_directory": os.getcwd(),
         "environment": {
@@ -382,13 +256,10 @@ async def debug_react():
         },
         "react_paths": {
             "static_path": str(REACT_STATIC_PATH),
-            "index_path": str(REACT_INDEX_PATH),
-            "static_exists": REACT_STATIC_PATH.exists(),
-            "index_exists": REACT_INDEX_PATH.exists()
+            "static_exists": REACT_STATIC_PATH.exists()
         }
     }
     
-    # Проверяем содержимое static директории
     if REACT_STATIC_PATH.exists():
         try:
             files = list(REACT_STATIC_PATH.iterdir())
@@ -404,14 +275,14 @@ async def debug_react():
                 ]
             }
             
-            # Специально проверяем index.html
-            if REACT_INDEX_PATH.exists():
-                with open(REACT_INDEX_PATH, 'r') as f:
+            index_path = REACT_STATIC_PATH / "index.html"
+            if index_path.exists():
+                with open(index_path, 'r') as f:
                     content = f.read()
                 debug_info["index_html"] = {
                     "exists": True,
                     "size": len(content),
-                    "content_preview": content[:200] + "..." if len(content) > 200 else content
+                    "content_preview": content[:500] + "..." if len(content) > 500 else content
                 }
             else:
                 debug_info["index_html"] = {"exists": False}
@@ -421,84 +292,72 @@ async def debug_react():
     
     return debug_info
 
-@app.get("/startup-progress") 
-async def startup_progress():
-    """ИСПРАВЛЕННЫЙ статус загрузки приложения"""
-    react_ready = REACT_INDEX_PATH.exists()
-    
-    return {
-        "status": "running",
-        "platform": "HuggingFace Spaces",
-        "components": {
-            "api": {
-                "status": "ready",
-                "description": "FastAPI backend"
-            },
-            "react_spa": {
-                "status": "ready" if react_ready else "not_found",
-                "description": "React frontend application",
-                "path": str(REACT_INDEX_PATH),
-                "ready": react_ready
-            },
-            "model": {
-                "status": "loading",
-                "description": "GPTQ model loading in background"
-            }
-        },
-        "progress": "100%" if react_ready else "75%",
-        "message": "React SPA готов!" if react_ready else "React SPA проверяется...",
-        "endpoints_working": ["/", "/docs", "/api-info", "/debug-react", "/health"],
-        "static_files_mounted": REACT_STATIC_PATH.exists()
-    }
-
-# Быстрый health check для deployment
 @app.get("/health")
 async def health_check():
-    """ИСПРАВЛЕННАЯ быстрая проверка здоровья"""
+    """Быстрая проверка здоровья"""
     try:
-        import asyncio
-        return await asyncio.wait_for({
+        return {
             "status": "healthy", 
             "version": "2.0.0",
             "platform": "HuggingFace Spaces",
-            "gptq_model": "TheBloke/Llama-2-7B-Chat-GPTQ",
-            "react_spa": "Ready" if REACT_INDEX_PATH.exists() else "Not found",
-            "static_files": "Mounted" if REACT_STATIC_PATH.exists() else "Not mounted",
-            "lazy_loading": True,
-            "memory_optimized": True,
-            "cors_fix_applied": True,
-            "post_endpoints_working": True,
-            "timeout_protected": True,
-            "timestamp": __import__("time").time(),
-            "available_endpoints": ["/", "/docs", "/api-info", "/debug-react"]
-        }, timeout=15)
+            "react_spa": "Ready" if (REACT_STATIC_PATH / "index.html").exists() else "Not found",
+            "static_files": "Available" if REACT_STATIC_PATH.exists() else "Not mounted",
+            "timestamp": __import__("time").time()
+        }
     except:
         return {
             "status": "timeout",
-            "timeout_limit": "15s",
-            "message": "Health check timeout - services may be loading"
+            "message": "Health check timeout"
+        }
+
+# ====================================
+# КРИТИЧЕСКИ ВАЖНО: ПОРЯДОК МОНТИРОВАНИЯ ПО ДОКУМЕНТАЦИИ HF SPACES
+# ====================================
+
+# ВАЖНО: Монтируем статические файлы ПОСЛЕ всех API endpoints
+if REACT_STATIC_PATH.exists():
+    print(f"✅ Mounting React static files from: {REACT_STATIC_PATH}")
+    
+    # По документации HF Spaces: монтируем корень с html=True для SPA routing
+    app.mount("/", StaticFiles(directory=str(REACT_STATIC_PATH), html=True), name="static")
+    
+    print("✅ React SPA mounted successfully according to HF Spaces documentation")
+else:
+    print(f"⚠️ React static path not found: {REACT_STATIC_PATH}")
+    
+    # Fallback корневой route если React не найден
+    @app.get("/")
+    async def root_fallback():
+        return {
+            "message": "Legal Assistant API",
+            "version": "2.0.0", 
+            "status": "API работает ✅",
+            "react_status": f"React files not found: {REACT_STATIC_PATH}",
+            "available_endpoints": {
+                "api_docs": "/docs",
+                "api_info": "/api-info", 
+                "debug": "/debug-react",
+                "health": "/health"
+            },
+            "platform": "HuggingFace Spaces",
+            "instructions": [
+                "React files should be in /home/user/app/static/",
+                "Check /debug-react for detailed diagnosis",
+                "Try /docs for API documentation"
+            ]
         }
 
 if __name__ == "__main__":
     main()
 else:
-    # Если модуль импортируется
     logger.info("📦 Legal Assistant API module imported")
     logger.info("🤖 GPTQ Model: TheBloke/Llama-2-7B-Chat-GPTQ")
     logger.info("⚛️ React SPA: Integrated fullstack application")
     logger.info("🚀 Ready for HuggingFace Spaces deployment")
-    logger.info("💾 Memory optimized for 16GB limit")
-    logger.info("🔄 Lazy loading enabled for faster startup")
-    logger.info("🔧 CORS fix applied - POST endpoints working")
-    logger.info(f"⏰ Comprehensive timeout protection - {GLOBAL_REQUEST_TIMEOUT}s global limit")
-    logger.info(f"🤖 GPTQ loading timeout: {GPTQ_MODEL_LOADING_TIMEOUT}s")
     print("🔗 React App: /")
     print("🔗 API Documentation: /docs")
     print("🏥 Health Check: /health")
     print("📊 Debug React: /debug-react")
     print("📋 API Info: /api-info")
-    print("🚀 Startup Progress: /startup-progress")
-    print("✅ POST endpoints fixed and working")
+    print("✅ Static files mounted according to HF Spaces documentation")
     print("⚛️ React SPA integrated and ready")
-    print(f"🛡️ All requests protected by comprehensive timeout system")
-    print(f"⏰ GPTQ model loading: up to {GPTQ_FIRST_LOAD_TIMEOUT//60} minutes first time")
