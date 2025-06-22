@@ -239,9 +239,12 @@ async def root():
     from pathlib import Path
     import os
     
-    # Попытка найти React build
+    # Попытка найти React build - ИСПРАВЛЕННЫЕ ПУТИ ДЛЯ HF SPACES
     possible_react_paths = [
-        Path("/home/user/app/frontend/build/index.html"),
+        Path("/home/user/app/static/index.html"),        # Основной путь HF Spaces
+        Path("./static/index.html"),                     # Относительный путь
+        Path("static/index.html"),                       # Простой путь
+        Path("/home/user/app/frontend/build/index.html"), # Fallback
         Path("./frontend/build/index.html"),
         Path("frontend/build/index.html")
     ]
@@ -289,9 +292,12 @@ async def api_info():
     import os
     from pathlib import Path
     
-    # Проверяем React build
+    # Проверяем React build - ОБНОВЛЕННЫЕ ПУТИ ДЛЯ HF SPACES
     possible_react_paths = [
-        Path("/home/user/app/frontend/build"),  # HF Spaces путь
+        Path("/home/user/app/static"),          # Основной путь HF Spaces  
+        Path("./static"),                       # Относительный путь
+        Path("static"),                         # Простой путь
+        Path("/home/user/app/frontend/build"),  # Fallback
         Path("./frontend/build"),
         Path("frontend/build")
     ]
@@ -506,19 +512,42 @@ async def health_check():
             "message": "Health check timeout - services may be loading"
         }
 
-# Статические файлы React (если найдены)
+# Статические файлы React (если найдены) - ИСПРАВЛЕННЫЕ ПУТИ
 try:
     from fastapi.staticfiles import StaticFiles
     from pathlib import Path
     
-    react_static_path = Path("/home/user/app/frontend/build/static")
-    if react_static_path.exists():
+    # ПРИОРИТЕТНЫЕ ПУТИ ДЛЯ HF SPACES
+    react_static_paths = [
+        Path("/home/user/app/static/static"),     # Основной путь HF Spaces
+        Path("./static/static"),                  # Относительный путь
+        Path("/home/user/app/frontend/build/static"),  # Fallback
+    ]
+    
+    react_static_path = None
+    for path in react_static_paths:
+        if path.exists():
+            react_static_path = path
+            break
+    
+    if react_static_path:
         app.mount("/static", StaticFiles(directory=react_static_path), name="react_static")
-        print("✅ React static files mounted at /static")
+        print(f"✅ React static files mounted from: {react_static_path}")
     
     # Дополнительные React файлы
-    react_build_path = Path("/home/user/app/frontend/build")
-    if react_build_path.exists():
+    react_build_paths = [
+        Path("/home/user/app/static"),
+        Path("./static"),
+        Path("/home/user/app/frontend/build"),
+    ]
+    
+    react_build_path = None
+    for path in react_build_paths:
+        if path.exists() and (path / "index.html").exists():
+            react_build_path = path
+            break
+    
+    if react_build_path:
         react_files = ["manifest.json", "favicon.ico", "robots.txt", "logo192.png", "logo512.png"]
         
         for file_name in react_files:
@@ -529,6 +558,7 @@ try:
                     from fastapi.responses import FileResponse
                     return FileResponse(react_build_path / filename)
                 
+        print(f"✅ React build path found: {react_build_path}")
         print(f"✅ React assets available: {[f for f in react_files if (react_build_path / f).exists()]}")
         
 except Exception as e:
