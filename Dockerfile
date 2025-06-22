@@ -24,24 +24,21 @@ COPY frontend/ ./
 RUN test -f public/index.html || \
     (echo "Создаем public/index.html..." && \
     mkdir -p public && \
-    cat > public/index.html << 'EOF'
-<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#000000" />
-    <meta name="description" content="Legal Assistant - AI-powered legal consultation" />
-    <title>Legal Assistant</title>
-  </head>
-  <body>
-    <noscript>You need to enable JavaScript to run this app.</noscript>
-    <div id="root"></div>
-  </body>
-</html>
-EOF
-    )
+    echo '<!DOCTYPE html>' > public/index.html && \
+    echo '<html lang="en">' >> public/index.html && \
+    echo '  <head>' >> public/index.html && \
+    echo '    <meta charset="utf-8" />' >> public/index.html && \
+    echo '    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />' >> public/index.html && \
+    echo '    <meta name="viewport" content="width=device-width, initial-scale=1" />' >> public/index.html && \
+    echo '    <meta name="theme-color" content="#000000" />' >> public/index.html && \
+    echo '    <meta name="description" content="Legal Assistant - AI-powered legal consultation" />' >> public/index.html && \
+    echo '    <title>Legal Assistant</title>' >> public/index.html && \
+    echo '  </head>' >> public/index.html && \
+    echo '  <body>' >> public/index.html && \
+    echo '    <noscript>You need to enable JavaScript to run this app.</noscript>' >> public/index.html && \
+    echo '    <div id="root"></div>' >> public/index.html && \
+    echo '  </body>' >> public/index.html && \
+    echo '</html>' >> public/index.html)
 
 # ИСПРАВЛЕНИЕ: Проверяем и исправляем package.json
 RUN if ! grep -q '"build":' package.json; then \
@@ -76,25 +73,23 @@ RUN echo "🔍 Диагностика React build:" && \
 RUN if [ ! -f build/index.html ]; then \
     echo "❌ index.html отсутствует! Создаем базовый..." && \
     mkdir -p build && \
-    cat > build/index.html << 'EOF'
-<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <link rel="icon" href="/favicon.ico" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#000000" />
-    <meta name="description" content="Legal Assistant - AI-powered legal consultation" />
-    <link href="/static/css/main.css" rel="stylesheet">
-    <title>Legal Assistant</title>
-  </head>
-  <body>
-    <noscript>You need to enable JavaScript to run this app.</noscript>
-    <div id="root"></div>
-    <script src="/static/js/main.js"></script>
-  </body>
-</html>
-EOF
+    echo '<!DOCTYPE html>' > build/index.html && \
+    echo '<html lang="en">' >> build/index.html && \
+    echo '  <head>' >> build/index.html && \
+    echo '    <meta charset="utf-8" />' >> build/index.html && \
+    echo '    <link rel="icon" href="/favicon.ico" />' >> build/index.html && \
+    echo '    <meta name="viewport" content="width=device-width, initial-scale=1" />' >> build/index.html && \
+    echo '    <meta name="theme-color" content="#000000" />' >> build/index.html && \
+    echo '    <meta name="description" content="Legal Assistant - AI-powered legal consultation" />' >> build/index.html && \
+    echo '    <link href="/static/css/main.css" rel="stylesheet">' >> build/index.html && \
+    echo '    <title>Legal Assistant</title>' >> build/index.html && \
+    echo '  </head>' >> build/index.html && \
+    echo '  <body>' >> build/index.html && \
+    echo '    <noscript>You need to enable JavaScript to run this app.</noscript>' >> build/index.html && \
+    echo '    <div id="root"></div>' >> build/index.html && \
+    echo '    <script src="/static/js/main.js"></script>' >> build/index.html && \
+    echo '  </body>' >> build/index.html && \
+    echo '</html>' >> build/index.html; \
     fi
 
 # КРИТИЧЕСКАЯ ПРОВЕРКА: Убеждаемся что все файлы созданы
