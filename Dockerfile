@@ -1,4 +1,4 @@
-# Dockerfile для HuggingFace Spaces - ПОЛНОСТЬЮ ИСПРАВЛЕННАЯ ВЕРСИЯ
+# Dockerfile для HuggingFace Spaces - ФИНАЛЬНАЯ ИСПРАВЛЕННАЯ ВЕРСИЯ
 # Multi-stage build: Node.js для React + Python для FastAPI + правильная раздача статики
 
 # ====================================
@@ -50,33 +50,67 @@ ENV NODE_OPTIONS="--max_old_space_size=4096"
 # Собираем React приложение
 RUN npm run build
 
+# КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Проверяем и исправляем asset-manifest.json
+RUN if [ -f build/asset-manifest.json ]; then \
+        echo "Проверяем asset-manifest.json..." && \
+        cat build/asset-manifest.json; \
+    fi
+
+# СОЗДАЕМ ПРАВИЛЬНЫЙ index.html с корректными путями
+RUN echo "Создаем правильный index.html..." && \
+    mkdir -p build && \
+    echo '<!DOCTYPE html>' > build/index.html && \
+    echo '<html lang="en">' >> build/index.html && \
+    echo '<head>' >> build/index.html && \
+    echo '<meta charset="utf-8">' >> build/index.html && \
+    echo '<meta name="viewport" content="width=device-width,initial-scale=1">' >> build/index.html && \
+    echo '<meta name="theme-color" content="#000000">' >> build/index.html && \
+    echo '<meta name="description" content="Legal Assistant - AI-powered legal consultation">' >> build/index.html && \
+    echo '<link rel="icon" href="/static/favicon.ico">' >> build/index.html && \
+    echo '<link rel="manifest" href="/static/manifest.json">' >> build/index.html && \
+    echo '<title>Legal Assistant</title>' >> build/index.html && \
+    echo '</head>' >> build/index.html && \
+    echo '<body>' >> build/index.html && \
+    echo '<noscript>You need to enable JavaScript to run this app.</noscript>' >> build/index.html && \
+    echo '<div id="root"></div>' >> build/index.html && \
+    echo '</body>' >> build/index.html && \
+    echo '</html>' >> build/index.html
+
+# ДОБАВЛЯЕМ СКРИПТЫ ДИНАМИЧЕСКИ если они существуют
+RUN if [ -d build/static/js ]; then \
+        echo "Добавляем JS файлы в index.html..." && \
+        JS_FILES=$(find build/static/js -name "*.js" | head -3) && \
+        for js_file in $JS_FILES; do \
+            js_path=$(echo $js_file | sed 's|build||') && \
+            echo "<script defer=\"defer\" src=\"$js_path\"></script>" >> build/index.html; \
+        done; \
+    fi
+
+# ДОБАВЛЯЕМ CSS ФАЙЛЫ если существуют  
+RUN if [ -d build/static/css ]; then \
+        echo "Добавляем CSS файлы в index.html..." && \
+        CSS_FILES=$(find build/static/css -name "*.css" | head -3) && \
+        for css_file in $CSS_FILES; do \
+            css_path=$(echo $css_file | sed 's|build||') && \
+            sed -i "/<title>/a <link href=\"$css_path\" rel=\"stylesheet\">" build/index.html; \
+        done; \
+    fi
+
+# ФИНАЛЬНАЯ ПРОВЕРКА index.html
+RUN echo "=== СОДЕРЖИМОЕ ИСПРАВЛЕННОГО index.html ===" && \
+    cat build/index.html && \
+    echo "=== КОНЕЦ index.html ==="
+
 # ДИАГНОСТИКА: проверяем что создалось
 RUN echo "=== ДИАГНОСТИКА REACT BUILD ===" && \
     echo "Содержимое build/:" && \
     ls -la build/ && \
-    echo "Поиск index.html:" && \
-    find . -name "index.html" -type f && \
-    echo "Размер build/:" && \
-    du -sh build/ && \
     echo "Содержимое build/static/:" && \
-    ls -la build/static/ 2>/dev/null || echo "build/static/ не существует"
-
-# ПРИНУДИТЕЛЬНО создаем index.html если его нет
-RUN if [ ! -f build/index.html ]; then \
-        echo "ПРИНУДИТЕЛЬНОЕ СОЗДАНИЕ index.html" && \
-        mkdir -p build && \
-        echo '<!DOCTYPE html>' > build/index.html && \
-        echo '<html lang="en">' >> build/index.html && \
-        echo '<head>' >> build/index.html && \
-        echo '<meta charset="utf-8">' >> build/index.html && \
-        echo '<meta name="viewport" content="width=device-width,initial-scale=1">' >> build/index.html && \
-        echo '<title>Legal Assistant</title>' >> build/index.html && \
-        echo '</head>' >> build/index.html && \
-        echo '<body>' >> build/index.html && \
-        echo '<div id="root"></div>' >> build/index.html && \
-        echo '</body>' >> build/index.html && \
-        echo '</html>' >> build/index.html; \
-    fi
+    ls -la build/static/ 2>/dev/null || echo "build/static/ не существует" && \
+    echo "JS файлы:" && \
+    find build/static -name "*.js" 2>/dev/null || echo "JS файлы не найдены" && \
+    echo "CSS файлы:" && \
+    find build/static -name "*.css" 2>/dev/null || echo "CSS файлы не найдены"
 
 # ФИНАЛЬНАЯ ПРОВЕРКА
 RUN test -f build/index.html || (echo "КРИТИЧЕСКАЯ ОШИБКА: index.html не создан!" && exit 1)
@@ -140,26 +174,12 @@ RUN echo "=== ДИАГНОСТИКА КОПИРОВАНИЯ ===" && \
     ls -la && \
     echo "Содержимое static/:" && \
     ls -la static/ && \
-    echo "Содержимое frontend/:" && \
-    ls -la frontend/ 2>/dev/null || echo "frontend/ не создана" && \
+    echo "Содержимое static/static/:" && \
+    ls -la static/static/ 2>/dev/null || echo "static/static/ не существует" && \
     echo "Поиск всех index.html:" && \
-    find . -name "index.html" -type f 2>/dev/null || echo "index.html не найден"
-
-# ДОПОЛНИТЕЛЬНОЕ ИСПРАВЛЕНИЕ: убеждаемся что index.html есть в нужных местах
-RUN if [ ! -f static/index.html ]; then \
-        echo "Создаем static/index.html..." && \
-        echo '<!DOCTYPE html><html><head><title>Legal Assistant</title></head><body><div id="root">App Loading...</div></body></html>' > static/index.html; \
-    fi && \
-    if [ ! -f frontend/build/index.html ]; then \
-        echo "Создаем frontend/build/index.html..." && \
-        mkdir -p frontend/build && \
-        cp static/index.html frontend/build/index.html; \
-    fi
-
-# СОЗДАЕМ ДОПОЛНИТЕЛЬНЫЕ ФАЙЛЫ для React
-RUN echo '{"short_name":"Legal Assistant","name":"Legal Assistant","start_url":"/","display":"standalone"}' > static/manifest.json && \
-    echo '<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><rect width="32" height="32" fill="#1f2937"/><text x="16" y="20" text-anchor="middle" fill="white" font-size="16">⚖️</text></svg>' > static/favicon.ico && \
-    echo 'User-agent: *\nDisallow:' > static/robots.txt
+    find . -name "index.html" -type f 2>/dev/null || echo "index.html не найден" && \
+    echo "Содержимое index.html:" && \
+    head -20 static/index.html 2>/dev/null || echo "Не удалось прочитать index.html"
 
 # Создание необходимых директорий с правильными правами
 RUN mkdir -p logs simple_db chromadb_data uploads temp backups .cache
@@ -194,7 +214,9 @@ RUN echo "=== ФИНАЛЬНАЯ ПРОВЕРКА ===" && \
     (test -f static/index.html && echo "✅ static/index.html существует" || echo "❌ static/index.html отсутствует") && \
     (test -f frontend/build/index.html && echo "✅ frontend/build/index.html существует" || echo "❌ frontend/build/index.html отсутствует") && \
     echo "Размеры ключевых файлов:" && \
-    ls -lh static/index.html static/manifest.json static/favicon.ico 2>/dev/null || echo "Некоторые файлы отсутствуют" && \
+    ls -lh static/index.html 2>/dev/null || echo "index.html отсутствует" && \
+    echo "Статические файлы React:" && \
+    ls -la static/static/ 2>/dev/null || echo "static/static/ отсутствует" && \
     echo "=== ГОТОВО ==="
 
 # ====================================
