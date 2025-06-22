@@ -30,7 +30,7 @@ app = FastAPI(title="Legal Assistant Test")
 
 @app.get("/")
 def read_root():
-    return {"message": "Legal Assistant API работает!", "status": "ok"}
+    return {"message": "Legal Assistant API работает!", "status": "ok!"}
 
 @app.get("/health")
 def health():
