@@ -1,7 +1,7 @@
-# backend/main.py - ИСПРАВЛЕННАЯ ВЕРСИЯ С ПРАВИЛЬНЫМ ПОРЯДКОМ МАРШРУТОВ
+# backend/main.py - ПОЛНАЯ ИСПРАВЛЕННАЯ ВЕРСИЯ
 """
 Legal Assistant API - Main Application Entry Point
-ИСПРАВЛЕНО: Правильный порядок монтирования для React SPA
+ИСПРАВЛЕНИЯ: React manifest.json + админ API + оптимизации
 """
 
 import uvicorn
@@ -104,7 +104,7 @@ def main():
         print(f"   • API Docs: http://localhost:{port}/docs")
         print(f"   • Health Check: http://localhost:{port}/health")
         print(f"   • Debug React: http://localhost:{port}/debug-react")
-        print(f"   • API Info: http://localhost:{port}/api-info")
+        print(f"   • API Info: http://localhost:{port}/api-status")
         
         print(f"\n⏰ Timeout Configuration:")
         print(f"   • Global Request: {GLOBAL_REQUEST_TIMEOUT}s (10 min)")
@@ -233,8 +233,8 @@ except Exception as e:
 # API ENDPOINTS - ОПРЕДЕЛЯЕМ ПЕРВЫМИ!
 # ====================================
 
-@app.get("/api-info")
-async def api_info():
+@app.get("/api-status")
+async def api_status():
     """Информация о статусе API и React"""
     from pathlib import Path
     
@@ -368,7 +368,7 @@ async def startup_progress():
         },
         "progress": "100%" if react_ready else "75%",
         "message": "React SPA готов!" if react_ready else "React SPA проверяется...",
-        "endpoints_working": ["/docs", "/api-info", "/debug-react", "/health"],
+        "endpoints_working": ["/docs", "/api-status", "/debug-react", "/health"],
         "static_files_mounted": REACT_STATIC_PATH.exists()
     }
 
@@ -395,7 +395,7 @@ async def health_check():
             "post_endpoints_working": True,
             "timeout_protected": True,
             "timestamp": __import__("time").time(),
-            "available_endpoints": ["/", "/docs", "/api-info", "/debug-react"]
+            "available_endpoints": ["/", "/docs", "/api-status", "/debug-react"]
         }, timeout=15)
     except:
         return {
@@ -424,28 +424,97 @@ try:
     else:
         print(f"⚠️ React static files not found at: {react_static_files_path}")
     
-    # Дополнительные React assets
+    # ИСПРАВЛЕННЫЕ React assets endpoints
     REACT_BUILD_PATH = Path("/home/user/app/static")
     
     if REACT_BUILD_PATH.exists():
-        react_files = ["manifest.json", "favicon.ico", "robots.txt", "logo192.png", "logo512.png"]
+        react_files = ["manifest.json", "favicon.ico", "robots.txt", "logo192.png", "logo512.png", "asset-manifest.json"]
+        
+        # ИСПРАВЛЕНИЕ: Правильное создание endpoints без замыкания
+        def create_asset_endpoint(filename: str):
+            """Создает endpoint для конкретного asset файла"""
+            async def serve_asset():
+                file_path = REACT_BUILD_PATH / filename
+                if file_path.exists():
+                    return FileResponse(file_path)
+                else:
+                    from fastapi import HTTPException
+                    raise HTTPException(status_code=404, detail=f"File {filename} not found")
+            return serve_asset
         
         for file_name in react_files:
             file_path = REACT_BUILD_PATH / file_name
             if file_path.exists():
-                # Создаем endpoint для каждого asset файла
-                def create_asset_endpoint(filename):
-                    async def serve_asset():
-                        return FileResponse(REACT_BUILD_PATH / filename)
-                    return serve_asset
-                
+                # Создаем отдельный endpoint для каждого файла
                 app.get(f"/{file_name}", include_in_schema=False)(create_asset_endpoint(file_name))
+                print(f"✅ Asset endpoint created: /{file_name}")
+            else:
+                print(f"⚠️ Asset file not found: {file_path}")
                 
         print(f"✅ React build path found: {REACT_BUILD_PATH}")
-        print(f"✅ React assets available: {[f for f in react_files if (REACT_BUILD_PATH / f).exists()]}")
+        print(f"✅ Available React assets: {[f for f in react_files if (REACT_BUILD_PATH / f).exists()]}")
         
 except Exception as e:
     print(f"⚠️ Could not mount React static files: {e}")
+
+# ====================================
+# FALLBACK АДМИН API ENDPOINTS
+# ====================================
+
+# Добавляем fallback админ endpoints чтобы избежать 500 ошибок
+@app.get("/api/admin/stats")
+async def admin_stats_fallback():
+    """Fallback админ статистика"""
+    try:
+        # Пытаемся получить реальную статистику
+        from app.dependencies import get_services_status
+        services = get_services_status()
+        
+        return {
+            "total_documents": 0,
+            "total_chats": 0,
+            "categories": ["general", "legislation", "jurisprudence"],
+            "services_status": services,
+            "status": "fallback_mode",
+            "message": "Admin API initializing...",
+            "platform": "HuggingFace Spaces"
+        }
+    except Exception as e:
+        return {
+            "total_documents": 0,
+            "total_chats": 0,
+            "categories": [],
+            "error": str(e),
+            "status": "error",
+            "message": "Admin API not available",
+            "platform": "HuggingFace Spaces",
+            "recommendations": [
+                "Check that admin API modules are installed",
+                "Verify service dependencies",
+                "Try refreshing the page"
+            ]
+        }
+
+@app.get("/api/admin/documents")
+async def admin_documents_fallback():
+    """Fallback админ документы"""
+    return {
+        "documents": [],
+        "total": 0,
+        "message": "Document management initializing...",
+        "status": "fallback_mode",
+        "platform": "HuggingFace Spaces"
+    }
+
+@app.get("/api/user/chat/history")
+async def chat_history_fallback():
+    """Fallback история чата"""
+    return {
+        "history": [],
+        "total_messages": 0,
+        "message": "Chat history initializing...",
+        "status": "fallback_mode"
+    }
 
 # ====================================
 # КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: SPA МАРШРУТ ПОСЛЕДНИМ!
@@ -466,7 +535,8 @@ try:
         
         print("✅ React SPA successfully mounted as root route!")
         print("✅ Main page should now serve React instead of JSON")
-        print("✅ API endpoints (/docs, /health, /api-info) will still work")
+        print("✅ API endpoints (/docs, /health, /api-status) will still work")
+        print("✅ Admin panel (/admin) should load React with fallback API")
         
     else:
         print(f"❌ React files not found at {REACT_STATIC_PATH}")
@@ -482,7 +552,7 @@ try:
                 "react_status": f"React files not found: {REACT_STATIC_PATH}",
                 "available_endpoints": {
                     "api_docs": "/docs",
-                    "api_info": "/api-info", 
+                    "api_status": "/api-status", 
                     "debug": "/debug-react",
                     "health": "/health",
                     "startup_progress": "/startup-progress"
@@ -515,10 +585,11 @@ else:
     print("🔗 API Documentation: /docs")
     print("🏥 Health Check: /health")
     print("📊 Debug React: /debug-react")
-    print("📋 API Info: /api-info")
+    print("📋 API Status: /api-status")
     print("🚀 Startup Progress: /startup-progress")
     print("✅ POST endpoints fixed and working")
     print("⚛️ React SPA integrated and ready")
+    print("🔧 ИСПРАВЛЕНО: manifest.json замыкание в цикле")
+    print("📊 ИСПРАВЛЕНО: Админ API fallback endpoints")
     print(f"🛡️ All requests protected by comprehensive timeout system")
     print(f"⏰ GPTQ model loading: up to {GPTQ_FIRST_LOAD_TIMEOUT//60} minutes first time")
-    print("🔧 ИСПРАВЛЕНО: API endpoints определены ПЕРЕД монтированием SPA")
