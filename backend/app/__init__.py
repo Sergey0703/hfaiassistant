@@ -1,11 +1,11 @@
 # ====================================
-# ФАЙЛ: backend/app/__init__.py (ИСПРАВЛЕННАЯ ВЕРСИЯ)
+# ФАЙЛ: backend/app/__init__.py (ИСПРАВЛЕННАЯ ВЕРСИЯ БЕЗ КОРНЕВОГО МАРШРУТА)
 # Заменить существующий файл полностью
 # ====================================
 
 """
 FastAPI Application Factory - Исправленная версия для HuggingFace Spaces
-ИСПРАВЛЕНИЯ: Убрана асинхронная инициализация, добавлен lifespan context manager
+ИСПРАВЛЕНИЯ: Убран корневой маршрут @app.get("/") для корректной работы React SPA
 """
 
 import logging
@@ -68,6 +68,7 @@ async def lifespan(app: "FastAPI"):
 def create_app() -> "FastAPI":
     """
     Создает и настраивает FastAPI приложение с исправлениями для HF Spaces
+    ИСПРАВЛЕНИЕ: Убран корневой маршрут @app.get("/") для React SPA
     """
     try:
         # Импорты FastAPI
@@ -108,7 +109,8 @@ def create_app() -> "FastAPI":
             "middleware_loaded": False,
             "errors": [],
             "lazy_loading_enabled": True,  # НОВОЕ: отмечаем что используем lazy loading
-            "lifespan_configured": True    # НОВОЕ: отмечаем что lifespan настроен
+            "lifespan_configured": True,   # НОВОЕ: отмечаем что lifespan настроен
+            "react_spa_ready": False       # НОВОЕ: статус React SPA
         }
         
         # Сохраняем статус в app.state для доступа из endpoints
@@ -130,29 +132,19 @@ def create_app() -> "FastAPI":
             logger.error(f"❌ CORS configuration failed: {e}")
             initialization_status["errors"].append(f"CORS setup failed: {e}")
         
-        # Базовые маршруты приложения
-        @app.get("/")
-        async def root():
-            """Корневой endpoint с информацией о lazy loading"""
-            return {
-                "message": "Legal Assistant API with GPTQ Model",
-                "version": app_config.get("version", "2.0.0"),
-                "status": "healthy",
-                "platform": "HuggingFace Spaces" if app.state.hf_spaces else "Local",
-                "model": "TheBloke/Llama-2-7B-Chat-GPTQ",
-                "features": {
-                    "lazy_loading": True,
-                    "gptq_support": True,
-                    "ukrainian_language": True,
-                    "vector_search": "Available on demand",
-                    "demo_responses": "Available immediately"
-                },
-                "docs": "/docs",
-                "health": "/health",
-                "hf_health": "/hf-spaces-health",
-                "model_status": "/model-status",
-                "startup_progress": "/startup-progress"
-            }
+        # ====================================
+        # ИСПРАВЛЕНИЕ: УБИРАЕМ КОРНЕВОЙ МАРШРУТ!
+        # ====================================
+        # СТАРЫЙ КОД (УДАЛЁН):
+        # @app.get("/")
+        # async def root():
+        #     return {"message": "Legal Assistant API with GPTQ model support", ...}
+        
+        # ТЕПЕРЬ КОРНЕВОЙ ПУТЬ "/" БУДЕТ ДОСТУПЕН ДЛЯ REACT SPA!
+        
+        # ====================================
+        # БАЗОВЫЕ API МАРШРУТЫ (НЕ КОРНЕВЫЕ)
+        # ====================================
         
         @app.get("/health")
         async def health_check():
@@ -179,12 +171,19 @@ def create_app() -> "FastAPI":
                 if not services_status.get("chromadb_enabled", False):
                     recommendations.append("ChromaDB will initialize on first document search")
                 
+                # Проверяем React SPA
+                react_ready = initialization_status.get("react_spa_ready", False)
+                
                 response_data = {
                     "status": overall_status,
                     "timestamp": time.time(),
                     "platform": "HuggingFace Spaces" if app.state.hf_spaces else "Local",
                     "initialization": initialization_status,
                     "services": services_status,
+                    "react_spa": {
+                        "enabled": react_ready,
+                        "note": "React SPA mounted on root path (/)"
+                    },
                     "lazy_loading": {
                         "enabled": True,
                         "description": "Services initialize on first use",
@@ -222,6 +221,31 @@ def create_app() -> "FastAPI":
                     }
                 )
         
+        @app.get("/api-status")
+        async def api_status():
+            """Информация о статусе API (замена корневого маршрута)"""
+            return {
+                "message": "Legal Assistant API with GPTQ model support",
+                "version": app_config.get("version", "2.0.0"),
+                "status": "healthy",
+                "platform": "HuggingFace Spaces" if app.state.hf_spaces else "Local",
+                "model": "TheBloke/Llama-2-7B-Chat-GPTQ",
+                "features": {
+                    "lazy_loading": True,
+                    "gptq_support": True,
+                    "ukrainian_language": True,
+                    "vector_search": "Available on demand",
+                    "demo_responses": "Available immediately",
+                    "react_spa": "Mounted on root path (/)"
+                },
+                "docs": "/docs",
+                "health": "/health",
+                "hf_health": "/hf-spaces-health",
+                "model_status": "/model-status",
+                "startup_progress": "/startup-progress",
+                "note": "Root path (/) now serves React SPA instead of this JSON"
+            }
+        
         # Подключаем API роутеры
         try:
             from api import configure_fastapi_app
@@ -241,8 +265,8 @@ def create_app() -> "FastAPI":
                     "error": str(e),
                     "message": "Some API endpoints may be unavailable",
                     "available_endpoints": [
-                        "GET / - Root endpoint",
                         "GET /health - Health check",
+                        "GET /api-status - API status (former root)",
                         "GET /docs - API documentation",
                         "GET /api/status - This endpoint"
                     ],
@@ -273,14 +297,14 @@ def create_app() -> "FastAPI":
                 content={
                     "detail": f"Endpoint not found: {request.url.path}",
                     "available_endpoints": {
-                        "root": "/",
                         "health": "/health", 
                         "docs": "/docs",
-                        "api_info": "/api",
+                        "api_info": "/api-status",
                         "hf_spaces_health": "/hf-spaces-health"
                     },
                     "suggestion": "Check /docs for available endpoints",
-                    "platform": "HuggingFace Spaces" if app.state.hf_spaces else "Local"
+                    "platform": "HuggingFace Spaces" if app.state.hf_spaces else "Local",
+                    "note": "Root path (/) now serves React SPA"
                 }
             )
         
@@ -310,6 +334,8 @@ def create_app() -> "FastAPI":
                 logger.warning(f"   - {error}")
         
         logger.info("🔄 Lazy loading enabled - services will initialize on demand")
+        logger.info("🎯 ИСПРАВЛЕНИЕ: Корневой маршрут (/) теперь доступен для React SPA")
+        
         return app
         
     except ImportError as e:
@@ -321,14 +347,15 @@ def create_app() -> "FastAPI":
             from fastapi import FastAPI
             fallback_app = FastAPI(title="Legal Assistant API - Dependency Error")
             
-            @fallback_app.get("/")
+            @fallback_app.get("/api-status")
             async def dependency_error():
                 return {
                     "status": "dependency_error",
                     "error": str(e),
                     "message": "Critical dependencies missing",
                     "required": ["fastapi", "uvicorn"],
-                    "install_command": "pip install fastapi uvicorn"
+                    "install_command": "pip install fastapi uvicorn",
+                    "note": "Root path (/) available for React SPA after fixing dependencies"
                 }
             
             return fallback_app
@@ -346,14 +373,15 @@ def create_app() -> "FastAPI":
             from fastapi import FastAPI
             emergency_app = FastAPI(title="Legal Assistant API - Emergency Mode")
             
-            @emergency_app.get("/")
+            @emergency_app.get("/api-status")
             async def emergency_mode():
                 return {
                     "status": "emergency_mode",
                     "error": str(e),
                     "message": "Application failed to initialize properly",
                     "timestamp": time.time(),
-                    "platform": "HuggingFace Spaces" if os.getenv("SPACE_ID") else "Local"
+                    "platform": "HuggingFace Spaces" if os.getenv("SPACE_ID") else "Local",
+                    "note": "Root path (/) available for React SPA in normal mode"
                 }
             
             return emergency_app
