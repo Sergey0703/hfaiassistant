@@ -1,4 +1,28 @@
-# Dockerfile для HuggingFace Spaces - ИСПРАВЛЕННАЯ ВЕРСИЯ
+# Dockerfile для HuggingFace Spaces - ПОЛНЫЙ СТЕК С REACT
+# Multi-stage build: Node.js для React + Python для FastAPI
+
+# ====================================
+# STAGE 1: СБОРКА REACT ФРОНТЕНДА
+# ====================================
+FROM node:18-alpine AS react-builder
+
+WORKDIR /app/frontend
+
+# Копируем package.json и package-lock.json
+COPY frontend/package*.json ./
+
+# Устанавливаем зависимости
+RUN npm ci --only=production
+
+# Копируем исходники React
+COPY frontend/ ./
+
+# Собираем продукцию React
+RUN npm run build
+
+# ====================================
+# STAGE 2: PYTHON BACKEND + REACT BUILD
+# ====================================
 FROM python:3.11-slim
 
 # Установка системных зависимостей
@@ -36,13 +60,22 @@ RUN pip install --user --no-cache-dir -r requirements.txt
 # Проверяем что sentence-transformers работает
 RUN python -c "import sentence_transformers; print('✅ sentence-transformers OK')"
 
-# Копирование кода приложения
+# ====================================
+# КОПИРОВАНИЕ ПРИЛОЖЕНИЯ
+# ====================================
+
+# Копирование кода бэкенда
 COPY --chown=user backend/ .
+
+# ВАЖНО: Копирование собранного React приложения из первого stage
+COPY --from=react-builder --chown=user /app/frontend/build ./frontend/build
 
 # Создание необходимых директорий с правильными правами
 RUN mkdir -p logs simple_db chromadb_data uploads temp backups .cache
 
-# Настройка переменных окружения для HuggingFace Spaces
+# ====================================
+# НАСТРОЙКА ПЕРЕМЕННЫХ ОКРУЖЕНИЯ
+# ====================================
 ENV PYTHONPATH=$HOME/app
 ENV PYTHONUNBUFFERED=1
 ENV LOG_LEVEL=INFO
@@ -56,8 +89,21 @@ ENV TRANSFORMERS_CACHE=$HOME/app/.cache
 ENV HF_HOME=$HOME/app/.cache
 ENV TORCH_HOME=$HOME/app/.cache
 
+# React frontend settings
+ENV REACT_BUILD_PATH=$HOME/app/frontend/build
+ENV SERVE_REACT=true
+
 # Порт для HuggingFace Spaces (обязательно 7860)
 EXPOSE 7860
 
-# Команда запуска с увеличенным timeout для Swagger UI
+# ====================================
+# HEALTHCHECK ДЛЯ DOCKER
+# ====================================
+HEALTHCHECK --interval=30s --timeout=30s --start-period=120s --retries=3 \
+    CMD curl -f http://localhost:7860/health || exit 1
+
+# ====================================
+# КОМАНДА ЗАПУСКА
+# ====================================
+# Увеличенный timeout для React + FastAPI
 CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "7860", "--workers", "1", "--timeout-keep-alive", "65"]
