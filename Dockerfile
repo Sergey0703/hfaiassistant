@@ -11,8 +11,11 @@ WORKDIR /app/frontend
 # Копируем package.json и package-lock.json
 COPY frontend/package*.json ./
 
-# Устанавливаем зависимости
-RUN npm ci --only=production
+# Устанавливаем ВСЕ зависимости (включая devDependencies для сборки)
+RUN npm ci
+
+# Устанавливаем типы для TypeScript если нужно
+RUN npm install --save-dev @types/react @types/react-dom @types/node typescript || true
 
 # Копируем исходники React
 COPY frontend/ ./
