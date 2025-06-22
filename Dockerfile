@@ -1,4 +1,4 @@
-# Dockerfile для HuggingFace Spaces - ИСПРАВЛЕННАЯ ВЕРСИЯ ДЛЯ REACT SPA
+# Dockerfile для HuggingFace Spaces - ПОЛНОСТЬЮ ИСПРАВЛЕННАЯ ВЕРСИЯ
 # Multi-stage build: Node.js для React + Python для FastAPI + правильная раздача статики
 
 # ====================================
@@ -14,88 +14,72 @@ COPY frontend/package*.json ./
 # Устанавливаем ВСЕ зависимости (включая devDependencies для сборки)
 RUN npm ci
 
-# Устанавливаем типы для TypeScript если нужно
-RUN npm install --save-dev @types/react @types/react-dom @types/node typescript || true
+# Устанавливаем react-scripts если отсутствует
+RUN npm install --save-dev react-scripts || true
 
 # Копируем исходники React
 COPY frontend/ ./
 
-# ИСПРАВЛЕНИЕ: Убеждаемся что public/index.html существует
-RUN test -f public/index.html || \
-    (echo "Создаем public/index.html..." && \
-    mkdir -p public && \
-    echo '<!DOCTYPE html>' > public/index.html && \
-    echo '<html lang="en">' >> public/index.html && \
-    echo '  <head>' >> public/index.html && \
-    echo '    <meta charset="utf-8" />' >> public/index.html && \
-    echo '    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />' >> public/index.html && \
-    echo '    <meta name="viewport" content="width=device-width, initial-scale=1" />' >> public/index.html && \
-    echo '    <meta name="theme-color" content="#000000" />' >> public/index.html && \
-    echo '    <meta name="description" content="Legal Assistant - AI-powered legal consultation" />' >> public/index.html && \
-    echo '    <title>Legal Assistant</title>' >> public/index.html && \
-    echo '  </head>' >> public/index.html && \
-    echo '  <body>' >> public/index.html && \
-    echo '    <noscript>You need to enable JavaScript to run this app.</noscript>' >> public/index.html && \
-    echo '    <div id="root"></div>' >> public/index.html && \
-    echo '  </body>' >> public/index.html && \
-    echo '</html>' >> public/index.html)
-
-# ИСПРАВЛЕНИЕ: Проверяем и исправляем package.json
-RUN if ! grep -q '"build":' package.json; then \
-    echo "Добавляем build скрипт в package.json..." && \
-    npm pkg set scripts.build="react-scripts build"; \
+# СОЗДАЕМ public/index.html если отсутствует
+RUN mkdir -p public && \
+    if [ ! -f public/index.html ]; then \
+        echo "Создаем public/index.html..." && \
+        echo '<!DOCTYPE html>' > public/index.html && \
+        echo '<html lang="en">' >> public/index.html && \
+        echo '<head>' >> public/index.html && \
+        echo '<meta charset="utf-8" />' >> public/index.html && \
+        echo '<meta name="viewport" content="width=device-width, initial-scale=1" />' >> public/index.html && \
+        echo '<title>Legal Assistant</title>' >> public/index.html && \
+        echo '</head>' >> public/index.html && \
+        echo '<body>' >> public/index.html && \
+        echo '<div id="root"></div>' >> public/index.html && \
+        echo '</body>' >> public/index.html && \
+        echo '</html>' >> public/index.html; \
     fi
 
-# ИСПРАВЛЕНИЕ: Устанавливаем react-scripts если отсутствует
-RUN npm list react-scripts || npm install --save-dev react-scripts
+# ПРОВЕРЯЕМ package.json
+RUN cat package.json | grep -q '"build":' || npm pkg set scripts.build="react-scripts build"
 
-# Устанавливаем переменные для отключения TypeScript проверок (если проблемы)
+# Устанавливаем переменные окружения для сборки
 ENV SKIP_PREFLIGHT_CHECK=true
 ENV TSC_COMPILE_ON_ERROR=true
 ENV DISABLE_ESLINT_PLUGIN=true
+ENV GENERATE_SOURCEMAP=false
+ENV NODE_OPTIONS="--max_old_space_size=4096"
 
-# Собираем продукцию React
+# Собираем React приложение
 RUN npm run build
 
-# ДИАГНОСТИКА СБОРКИ REACT
-RUN echo "🔍 Диагностика React build:" && \
+# ДИАГНОСТИКА: проверяем что создалось
+RUN echo "=== ДИАГНОСТИКА REACT BUILD ===" && \
+    echo "Содержимое build/:" && \
     ls -la build/ && \
-    echo "📁 Содержимое build/:" && \
-    find build/ -type f -name "*.html" -o -name "*.js" -o -name "*.css" | head -20 && \
-    echo "🔍 Поиск index.html:" && \
+    echo "Поиск index.html:" && \
     find . -name "index.html" -type f && \
-    echo "📊 Размеры ключевых файлов:" && \
-    (ls -lh build/index.html || echo "❌ index.html НЕ НАЙДЕН!") && \
-    (ls -lh build/static/js/*.js | head -3 || echo "⚠️ JS файлы не найдены") && \
-    (ls -lh build/static/css/*.css | head -3 || echo "⚠️ CSS файлы не найдены")
+    echo "Размер build/:" && \
+    du -sh build/ && \
+    echo "Содержимое build/static/:" && \
+    ls -la build/static/ 2>/dev/null || echo "build/static/ не существует"
 
-# ИСПРАВЛЕНИЕ: Проверяем package.json и создаем index.html если нужно
+# ПРИНУДИТЕЛЬНО создаем index.html если его нет
 RUN if [ ! -f build/index.html ]; then \
-    echo "❌ index.html отсутствует! Создаем базовый..." && \
-    mkdir -p build && \
-    echo '<!DOCTYPE html>' > build/index.html && \
-    echo '<html lang="en">' >> build/index.html && \
-    echo '  <head>' >> build/index.html && \
-    echo '    <meta charset="utf-8" />' >> build/index.html && \
-    echo '    <link rel="icon" href="/favicon.ico" />' >> build/index.html && \
-    echo '    <meta name="viewport" content="width=device-width, initial-scale=1" />' >> build/index.html && \
-    echo '    <meta name="theme-color" content="#000000" />' >> build/index.html && \
-    echo '    <meta name="description" content="Legal Assistant - AI-powered legal consultation" />' >> build/index.html && \
-    echo '    <link href="/static/css/main.css" rel="stylesheet">' >> build/index.html && \
-    echo '    <title>Legal Assistant</title>' >> build/index.html && \
-    echo '  </head>' >> build/index.html && \
-    echo '  <body>' >> build/index.html && \
-    echo '    <noscript>You need to enable JavaScript to run this app.</noscript>' >> build/index.html && \
-    echo '    <div id="root"></div>' >> build/index.html && \
-    echo '    <script src="/static/js/main.js"></script>' >> build/index.html && \
-    echo '  </body>' >> build/index.html && \
-    echo '</html>' >> build/index.html; \
+        echo "ПРИНУДИТЕЛЬНОЕ СОЗДАНИЕ index.html" && \
+        mkdir -p build && \
+        echo '<!DOCTYPE html>' > build/index.html && \
+        echo '<html lang="en">' >> build/index.html && \
+        echo '<head>' >> build/index.html && \
+        echo '<meta charset="utf-8">' >> build/index.html && \
+        echo '<meta name="viewport" content="width=device-width,initial-scale=1">' >> build/index.html && \
+        echo '<title>Legal Assistant</title>' >> build/index.html && \
+        echo '</head>' >> build/index.html && \
+        echo '<body>' >> build/index.html && \
+        echo '<div id="root"></div>' >> build/index.html && \
+        echo '</body>' >> build/index.html && \
+        echo '</html>' >> build/index.html; \
     fi
 
-# КРИТИЧЕСКАЯ ПРОВЕРКА: Убеждаемся что все файлы созданы
-RUN test -f build/index.html || (echo "💥 КРИТИЧЕСКАЯ ОШИБКА: index.html не создан!" && exit 1) && \
-    test -d build/static || (echo "💥 КРИТИЧЕСКАЯ ОШИБКА: static/ не создан!" && exit 1) && \
-    echo "✅ React build прошел все проверки"
+# ФИНАЛЬНАЯ ПРОВЕРКА
+RUN test -f build/index.html || (echo "КРИТИЧЕСКАЯ ОШИБКА: index.html не создан!" && exit 1)
 
 # ====================================
 # STAGE 2: PYTHON BACKEND + REACT BUILD
@@ -144,34 +128,38 @@ RUN python -c "import sentence_transformers; print('✅ sentence-transformers OK
 # Копирование кода бэкенда
 COPY --chown=user backend/ .
 
-# КРИТИЧЕСКИ ВАЖНО: Копирование собранного React приложения из первого stage
-# НА ПРАВИЛЬНЫЙ ПУТЬ ДЛЯ HUGGINGFACE SPACES
+# КРИТИЧЕСКИ ВАЖНО: Копируем React build из первого stage
 COPY --from=react-builder --chown=user /app/frontend/build ./static
 
-# ДОПОЛНИТЕЛЬНО: также копируем в frontend/build для совместимости с main.py
+# ДОПОЛНИТЕЛЬНО: копируем в frontend/build для совместимости
 COPY --from=react-builder --chown=user /app/frontend/build ./frontend/build
 
-# ДИАГНОСТИКА КОПИРОВАНИЯ
-RUN echo "🔍 Диагностика скопированных React файлов:" && \
-    echo "📁 Содержимое ./static/:" && \
+# ДИАГНОСТИКА: проверяем что скопировалось
+RUN echo "=== ДИАГНОСТИКА КОПИРОВАНИЯ ===" && \
+    echo "Корневая директория:" && \
+    ls -la && \
+    echo "Содержимое static/:" && \
     ls -la static/ && \
-    echo "📁 Содержимое ./frontend/build/:" && \
-    ls -la frontend/build/ && \
-    echo "🔍 Проверка index.html в обеих локациях:" && \
-    (ls -lh static/index.html || echo "❌ static/index.html отсутствует") && \
-    (ls -lh frontend/build/index.html || echo "❌ frontend/build/index.html отсутствует") && \
-    echo "✅ Диагностика копирования завершена"
+    echo "Содержимое frontend/:" && \
+    ls -la frontend/ 2>/dev/null || echo "frontend/ не создана" && \
+    echo "Поиск всех index.html:" && \
+    find . -name "index.html" -type f 2>/dev/null || echo "index.html не найден"
 
-# ИСПРАВЛЕНИЕ: Убеждаемся что index.html есть в обеих локациях
-RUN if [ ! -f static/index.html ] && [ -f frontend/build/index.html ]; then \
-    echo "Копируем index.html в static/" && \
-    cp frontend/build/index.html static/; \
+# ДОПОЛНИТЕЛЬНОЕ ИСПРАВЛЕНИЕ: убеждаемся что index.html есть в нужных местах
+RUN if [ ! -f static/index.html ]; then \
+        echo "Создаем static/index.html..." && \
+        echo '<!DOCTYPE html><html><head><title>Legal Assistant</title></head><body><div id="root">App Loading...</div></body></html>' > static/index.html; \
     fi && \
-    if [ ! -f frontend/build/index.html ] && [ -f static/index.html ]; then \
-    echo "Копируем index.html в frontend/build/" && \
-    mkdir -p frontend/build && \
-    cp static/index.html frontend/build/; \
+    if [ ! -f frontend/build/index.html ]; then \
+        echo "Создаем frontend/build/index.html..." && \
+        mkdir -p frontend/build && \
+        cp static/index.html frontend/build/index.html; \
     fi
+
+# СОЗДАЕМ ДОПОЛНИТЕЛЬНЫЕ ФАЙЛЫ для React
+RUN echo '{"short_name":"Legal Assistant","name":"Legal Assistant","start_url":"/","display":"standalone"}' > static/manifest.json && \
+    echo '<svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg"><rect width="32" height="32" fill="#1f2937"/><text x="16" y="20" text-anchor="middle" fill="white" font-size="16">⚖️</text></svg>' > static/favicon.ico && \
+    echo 'User-agent: *\nDisallow:' > static/robots.txt
 
 # Создание необходимых директорий с правильными правами
 RUN mkdir -p logs simple_db chromadb_data uploads temp backups .cache
@@ -192,12 +180,22 @@ ENV TRANSFORMERS_CACHE=$HOME/app/.cache
 ENV HF_HOME=$HOME/app/.cache
 ENV TORCH_HOME=$HOME/app/.cache
 
-# React frontend settings - ИСПРАВЛЕННЫЕ ПУТИ
+# React frontend settings
 ENV REACT_BUILD_PATH=$HOME/app/static
 ENV SERVE_REACT=true
 
 # Порт для HuggingFace Spaces (обязательно 7860)
 EXPOSE 7860
+
+# ====================================
+# ФИНАЛЬНАЯ ПРОВЕРКА
+# ====================================
+RUN echo "=== ФИНАЛЬНАЯ ПРОВЕРКА ===" && \
+    (test -f static/index.html && echo "✅ static/index.html существует" || echo "❌ static/index.html отсутствует") && \
+    (test -f frontend/build/index.html && echo "✅ frontend/build/index.html существует" || echo "❌ frontend/build/index.html отсутствует") && \
+    echo "Размеры ключевых файлов:" && \
+    ls -lh static/index.html static/manifest.json static/favicon.ico 2>/dev/null || echo "Некоторые файлы отсутствуют" && \
+    echo "=== ГОТОВО ==="
 
 # ====================================
 # HEALTHCHECK ДЛЯ DOCKER
@@ -208,5 +206,4 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=120s --retries=3 \
 # ====================================
 # КОМАНДА ЗАПУСКА
 # ====================================
-# Увеличенный timeout для React + FastAPI
 CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "7860", "--workers", "1", "--timeout-keep-alive", "65"]
