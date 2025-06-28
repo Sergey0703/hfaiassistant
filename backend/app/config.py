@@ -1,238 +1,110 @@
-# ====================================
-# ФАЙЛ: backend/app/config.py (ОБНОВЛЕННАЯ ВЕРСИЯ)
-# Заменить существующий файл полностью
-# ====================================
-
+# backend/app/config.py - УПРОЩЁННАЯ КОНФИГУРАЦИЯ
 """
-Конфигурация приложения с настройками LLM
+Упрощённая конфигурация без множественных настроек LLM и сложных валидаций
+Заменяет переусложнённый config.py с Ollama, GPTQ и множественными таймаутами
 """
 
-# Пытаемся импортировать pydantic_settings с fallback
-try:
-    from pydantic_settings import BaseSettings
-except ImportError:
-    # Fallback для старых версий pydantic
-    try:
-        from pydantic import BaseSettings
-    except ImportError:
-        # Если и BaseSettings недоступен, создаем заглушку
-        print("⚠️ Pydantic not available, using basic configuration")
-        class BaseSettings:
-            def __init__(self, **kwargs):
-                for key, value in kwargs.items():
-                    setattr(self, key, value)
-            
-            class Config:
-                env_file = ".env"
-                case_sensitive = True
-
-from typing import List
 import os
+from typing import List
 
-class Settings(BaseSettings):
-    """Настройки приложения"""
+# ====================================
+# ОСНОВНЫЕ НАСТРОЙКИ ПРИЛОЖЕНИЯ
+# ====================================
+
+class Settings:
+    """Упрощённый класс настроек"""
     
-    # API конфигурация
+    # Основные настройки API
     API_V1_PREFIX: str = "/api"
     PROJECT_NAME: str = "Legal Assistant API"
     VERSION: str = "2.0.0"
-    DESCRIPTION: str = "AI Legal Assistant with document scraping and vector search"
+    DESCRIPTION: str = "AI Legal Assistant with Llama integration"
     
     # CORS
     CORS_ORIGINS: List[str] = [
         "http://localhost:3000",
         "http://127.0.0.1:3000",
+        "*"  # Для HuggingFace Spaces
     ]
     
-    # База данных
-    USE_CHROMADB: bool = True
-    CHROMADB_PATH: str = "./chromadb_data"
-    SIMPLE_DB_PATH: str = "./simple_db"
+    # ====================================
+    # LLAMA LLM НАСТРОЙКИ (УПРОЩЁННЫЕ)
+    # ====================================
     
-    # Файлы
-    MAX_FILE_SIZE: int = 10 * 1024 * 1024  # 10MB
-    ALLOWED_FILE_TYPES: List[str] = [".txt", ".pdf", ".docx", ".md", ".doc"]
+    # Основные модели
+    LLM_PRIMARY_MODEL: str = "meta-llama/Llama-3.1-8B-Instruct"
+    LLM_FAST_MODEL: str = "meta-llama/Llama-3.2-3B-Instruct"
     
-    # Логирование
-    LOG_LEVEL: str = "INFO"
+    # Параметры генерации
+    LLM_MAX_TOKENS: int = 200
+    LLM_TEMPERATURE: float = 0.3  # Консервативно для юридических вопросов
+    LLM_TIMEOUT: int = 30  # Единый таймаут
+    
+    # HuggingFace настройки
+    HF_TOKEN: str = os.getenv("HF_TOKEN", "")
+    
+    # ====================================
+    # БАЗА ДАННЫХ И ПОИСК
+    # ====================================
+    
+    # ChromaDB
+    USE_CHROMADB: bool = os.getenv("USE_CHROMADB", "true").lower() == "true"
+    CHROMADB_PATH: str = os.getenv("CHROMADB_PATH", "./chromadb_data")
     
     # Эмбеддинги
     EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
     CHUNK_SIZE: int = 1000
     CHUNK_OVERLAP: int = 200
     
-    # Парсинг сайтов
-    SCRAPING_DELAY: float = 1.5
-    SCRAPING_TIMEOUT: int = 15
-    MAX_URLS_PER_REQUEST: int = 20
-    
     # Поиск
     DEFAULT_SEARCH_LIMIT: int = 5
-    MAX_SEARCH_LIMIT: int = 50
+    MAX_SEARCH_LIMIT: int = 20
+    MAX_CONTEXT_DOCUMENTS: int = 2  # Упрощено для производительности
+    CONTEXT_TRUNCATE_LENGTH: int = 500  # Сокращено для скорости
     
     # ====================================
-    # НОВЫЕ НАСТРОЙКИ LLM
+    # ФАЙЛЫ И ЗАГРУЗКИ
     # ====================================
     
-    # Ollama конфигурация
-    OLLAMA_ENABLED: bool = True
-    OLLAMA_BASE_URL: str = "http://localhost:11434"
-    OLLAMA_DEFAULT_MODEL: str = "llama3:latest"  # ИСПРАВЛЕНО для ваших моделей
-    OLLAMA_FALLBACK_MODELS: List[str] = ["llama3:latest", "llama3:8b"]  # ИСПРАВЛЕНО
+    MAX_FILE_SIZE: int = 10 * 1024 * 1024  # 10MB
+    ALLOWED_FILE_TYPES: List[str] = [".txt", ".pdf", ".docx", ".md"]
     
-    # Параметры генерации
-    LLM_TEMPERATURE: float = 0.3  # Низкая для юридических вопросов
-    LLM_MAX_TOKENS: int = 20
-    LLM_TIMEOUT: int = 120  # секунд (увеличено с 60)
+    # ====================================
+    # ВЕБ-СКРАПИНГ
+    # ====================================
     
-    # Управление контекстом
-    MAX_CONTEXT_DOCUMENTS: int = 3  # Максимум документов в контексте
-    MAX_CONTEXT_LENGTH: int = 4000  # Максимальная длина контекста
-    CONTEXT_TRUNCATE_LENGTH: int = 1500  # Длина каждого документа в контексте
+    SCRAPING_DELAY: float = 1.5
+    SCRAPING_TIMEOUT: int = 15
+    MAX_URLS_PER_REQUEST: int = 10  # Уменьшено для стабильности
     
-    # Режимы работы
-    LLM_DEMO_MODE: bool = False  # Если True, показывает заглушки вместо реальных ответов
-    LLM_FALLBACK_ENABLED: bool = True  # Включить fallback если LLM недоступен
+    # ====================================
+    # ЛОГИРОВАНИЕ И МОНИТОРИНГ
+    # ====================================
     
-    # Кэширование ответов
-    LLM_CACHE_ENABLED: bool = True
-    LLM_CACHE_TTL: int = 3600  # 1 час
-    LLM_CACHE_MAX_SIZE: int = 100  # Максимум кэшированных ответов
+    LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
     
-    # Мониторинг и лимиты
-    LLM_RATE_LIMIT: int = 60  # Запросов в час на пользователя
-    LLM_DAILY_LIMIT: int = 500  # Запросов в день
-    LLM_LOG_REQUESTS: bool = True  # Логировать все запросы к LLM
+    # ====================================
+    # СПЕЦИАЛЬНЫЕ РЕЖИМЫ
+    # ====================================
     
-    # Языковые настройки
+    # Демо режим (если LLM недоступен)
+    LLM_DEMO_MODE: bool = os.getenv("LLM_DEMO_MODE", "false").lower() == "true"
+    
+    # HuggingFace Spaces
+    HUGGINGFACE_SPACES: bool = os.getenv("SPACE_ID") is not None
+    
+    # Языки
     SUPPORTED_LANGUAGES: List[str] = ["en", "uk"]
     DEFAULT_LANGUAGE: str = "en"
-    
-    # Промпт настройки
-    SYSTEM_PROMPT_MAX_LENGTH: int = 1000
-    USER_PROMPT_MAX_LENGTH: int = 2000
-    
-    def __init__(self, **kwargs):
-        # Инициализация с возможностью работы без pydantic
-        try:
-            super().__init__(**kwargs)
-        except Exception:
-            # Если pydantic не работает, инициализируем вручную
-            for key, value in kwargs.items():
-                setattr(self, key, value)
-            self._load_from_env()
-    
-    def _load_from_env(self):
-        """Загружает настройки из переменных окружения"""
-        env_mappings = {
-            'USE_CHROMADB': ('USE_CHROMADB', lambda x: x.lower() in ['true', '1', 'yes']),
-            'MAX_FILE_SIZE': ('MAX_FILE_SIZE', int),
-            'LOG_LEVEL': ('LOG_LEVEL', str),
-            'SCRAPING_DELAY': ('SCRAPING_DELAY', float),
-            'DEFAULT_SEARCH_LIMIT': ('DEFAULT_SEARCH_LIMIT', int),
-            
-            # LLM настройки из переменных окружения
-            'OLLAMA_ENABLED': ('OLLAMA_ENABLED', lambda x: x.lower() in ['true', '1', 'yes']),
-            'OLLAMA_BASE_URL': ('OLLAMA_BASE_URL', str),
-            'OLLAMA_DEFAULT_MODEL': ('OLLAMA_DEFAULT_MODEL', str),
-            'LLM_TEMPERATURE': ('LLM_TEMPERATURE', float),
-            'LLM_MAX_TOKENS': ('LLM_MAX_TOKENS', int),
-            'LLM_DEMO_MODE': ('LLM_DEMO_MODE', lambda x: x.lower() in ['true', '1', 'yes']),
-            'LLM_CACHE_ENABLED': ('LLM_CACHE_ENABLED', lambda x: x.lower() in ['true', '1', 'yes'])
-        }
-        
-        for attr_name, (env_name, converter) in env_mappings.items():
-            env_value = os.getenv(env_name)
-            if env_value:
-                try:
-                    setattr(self, attr_name, converter(env_value))
-                except (ValueError, TypeError):
-                    pass  # Используем значение по умолчанию
-    
-    # Добавляем Config только если BaseSettings поддерживает его
-    try:
-        class Config:
-            env_file = ".env"
-            case_sensitive = True
-    except:
-        pass
 
-# Создаем глобальный экземпляр настроек
-try:
-    settings = Settings()
-    print("✅ Settings loaded successfully")
-except Exception as e:
-    print(f"⚠️ Could not create Settings with pydantic: {e}")
-    print("Using fallback configuration...")
-    
-    # Fallback конфигурация
-    class FallbackSettings:
-        def __init__(self):
-            self.API_V1_PREFIX = "/api"
-            self.PROJECT_NAME = "Legal Assistant API"
-            self.VERSION = "2.0.0"
-            self.DESCRIPTION = "AI Legal Assistant with document scraping and vector search"
-            self.CORS_ORIGINS = ["http://localhost:3000", "http://127.0.0.1:3000"]
-            self.USE_CHROMADB = True
-            self.CHROMADB_PATH = "./chromadb_data"
-            self.SIMPLE_DB_PATH = "./simple_db"
-            self.MAX_FILE_SIZE = 10 * 1024 * 1024
-            self.ALLOWED_FILE_TYPES = [".txt", ".pdf", ".docx", ".md", ".doc"]
-            self.LOG_LEVEL = "INFO"
-            self.EMBEDDING_MODEL = "all-MiniLM-L6-v2"
-            self.CHUNK_SIZE = 1000
-            self.CHUNK_OVERLAP = 200
-            self.SCRAPING_DELAY = 1.5
-            self.SCRAPING_TIMEOUT = 15
-            self.MAX_URLS_PER_REQUEST = 20
-            self.DEFAULT_SEARCH_LIMIT = 5
-            self.MAX_SEARCH_LIMIT = 50
-            
-            # LLM настройки fallback
-            self.OLLAMA_ENABLED = True
-            self.OLLAMA_BASE_URL = "http://localhost:11434"
-            self.OLLAMA_DEFAULT_MODEL = "llama3:8b"  # ИСПРАВЛЕНО
-            self.OLLAMA_FALLBACK_MODELS = ["llama3:latest", "llama3:8b"]  # ИСПРАВЛЕНО
-            self.LLM_TEMPERATURE = 0.3
-            self.LLM_MAX_TOKENS = 500
-            self.LLM_TIMEOUT = 180
-            self.MAX_CONTEXT_DOCUMENTS = 3
-            self.MAX_CONTEXT_LENGTH = 4000
-            self.CONTEXT_TRUNCATE_LENGTH = 1500
-            self.LLM_DEMO_MODE = False
-            self.LLM_FALLBACK_ENABLED = True
-            self.LLM_CACHE_ENABLED = True
-            self.LLM_CACHE_TTL = 3600
-            self.LLM_CACHE_MAX_SIZE = 100
-            self.LLM_RATE_LIMIT = 60
-            self.LLM_DAILY_LIMIT = 500
-            self.LLM_LOG_REQUESTS = True
-            self.SUPPORTED_LANGUAGES = ["en", "uk"]
-            self.DEFAULT_LANGUAGE = "en"
-            self.SYSTEM_PROMPT_MAX_LENGTH = 1000
-            self.USER_PROMPT_MAX_LENGTH = 2000
-            
-            # Загружаем из переменных окружения
-            self._load_from_env()
-        
-        def _load_from_env(self):
-            """Загружает переменные окружения"""
-            if os.getenv('USE_CHROMADB'):
-                self.USE_CHROMADB = os.getenv('USE_CHROMADB').lower() in ['true', '1', 'yes']
-            if os.getenv('LOG_LEVEL'):
-                self.LOG_LEVEL = os.getenv('LOG_LEVEL')
-            if os.getenv('OLLAMA_ENABLED'):
-                self.OLLAMA_ENABLED = os.getenv('OLLAMA_ENABLED').lower() in ['true', '1', 'yes']
-            if os.getenv('OLLAMA_BASE_URL'):
-                self.OLLAMA_BASE_URL = os.getenv('OLLAMA_BASE_URL')
-            if os.getenv('OLLAMA_DEFAULT_MODEL'):
-                self.OLLAMA_DEFAULT_MODEL = os.getenv('OLLAMA_DEFAULT_MODEL')
-            if os.getenv('LLM_DEMO_MODE'):
-                self.LLM_DEMO_MODE = os.getenv('LLM_DEMO_MODE').lower() in ['true', '1', 'yes']
-    
-    settings = FallbackSettings()
+# Создаём глобальный экземпляр
+settings = Settings()
 
-# ДОБАВЛЕНО: Экспорт API метаданных для совместимости с app/__init__.py
+# ====================================
+# КОНСТАНТЫ И СПРАВОЧНИКИ
+# ====================================
+
+# API метаданные
 API_METADATA = {
     "title": settings.PROJECT_NAME,
     "version": settings.VERSION,
@@ -240,14 +112,10 @@ API_METADATA = {
     "contact": {
         "name": "Legal Assistant Team",
         "email": "support@legalassistant.com"
-    },
-    "license": {
-        "name": "MIT",
-        "url": "https://opensource.org/licenses/MIT"
     }
 }
 
-# ДОБАВЛЕНО: Экспорт API тегов для совместимости
+# API теги для документации
 API_TAGS = [
     {
         "name": "User Chat",
@@ -259,27 +127,23 @@ API_TAGS = [
     },
     {
         "name": "Admin Documents",
-        "description": "Document management endpoints for administrators"
+        "description": "Document management for administrators"
     },
     {
         "name": "Admin Scraper",
-        "description": "Web scraping endpoints for administrators"
+        "description": "Web scraping for administrators"
     },
     {
         "name": "Admin Stats",
-        "description": "Statistics and analytics endpoints for administrators"
-    },
-    {
-        "name": "Admin LLM",
-        "description": "LLM management and monitoring endpoints"
+        "description": "Statistics and analytics"
     },
     {
         "name": "System",
-        "description": "System health and information endpoints"
+        "description": "System health and information"
     }
 ]
 
-# Константы категорий документов
+# Категории документов
 DOCUMENT_CATEGORIES = [
     "general",
     "legislation", 
@@ -288,14 +152,7 @@ DOCUMENT_CATEGORIES = [
     "civil_rights",
     "scraped",
     "ukraine_legal",
-    "ireland_legal",
-    "civil",
-    "criminal",
-    "tax",
-    "corporate",
-    "family",
-    "labor",
-    "real_estate"
+    "ireland_legal"
 ]
 
 # Предустановленные юридические сайты
@@ -303,103 +160,149 @@ UKRAINE_LEGAL_URLS = [
     "https://zakon.rada.gov.ua/laws/main",
     "https://court.gov.ua/",
     "https://minjust.gov.ua/",
-    "https://ccu.gov.ua/",
-    "https://npu.gov.ua/"
+    "https://ccu.gov.ua/"
 ]
 
 IRELAND_LEGAL_URLS = [
-    "https://www.irishimmigration.ie/",
     "https://www.irishstatutebook.ie/",
     "https://www.courts.ie/",
     "https://www.citizensinformation.ie/en/",
-    "https://www.justice.ie/",
-    "https://www.oireachtas.ie/"
+    "https://www.justice.ie/"
 ]
 
 # ====================================
-# НОВЫЕ КОНСТАНТЫ ДЛЯ LLM
+# ФУНКЦИИ КОНФИГУРАЦИИ
 # ====================================
 
-# Рекомендуемые модели Ollama для юридических задач
-RECOMMENDED_MODELS = {
-    "small": "llama3:8b",         # Быстрая модель 
-    "medium": "llama3:latest",    # Балансированная модель (ваша основная)
-    "large": "llama3:8b",         # Более точная модель (та же что и small у вас)
-    "specialized": "llama3:latest" # Основная модель
-}
-
-# Настройки качества ответов
-RESPONSE_QUALITY_SETTINGS = {
-    "creative": {"temperature": 0.8, "max_tokens": 2000},    # Творческие ответы
-    "balanced": {"temperature": 0.5, "max_tokens": 1500},    # Сбалансированные
-    "precise": {"temperature": 0.2, "max_tokens": 1000},     # Точные ответы
-    "legal": {"temperature": 0.3, "max_tokens": 1500}        # Для юридических вопросов
-}
-
-# Лимиты по умолчанию
-DEFAULT_LIMITS = {
-    "context_documents": 3,
-    "context_length": 4000,
-    "response_length": 1500,
-    "request_timeout": 60
-}
-
-# Поддерживаемые языки с метаданными
-LANGUAGE_CONFIG = {
-    "en": {
-        "name": "English",
-        "code": "en",
-        "rtl": False,
-        "supported": True
-    },
-    "uk": {
-        "name": "Українська",
-        "code": "uk", 
-        "rtl": False,
-        "supported": True
-    }
-}
-
 def get_llm_config() -> dict:
-    """Возвращает конфигурацию LLM"""
+    """Возвращает конфигурацию LLM (упрощённую)"""
     return {
-        "enabled": settings.OLLAMA_ENABLED,
-        "base_url": settings.OLLAMA_BASE_URL,
-        "default_model": settings.OLLAMA_DEFAULT_MODEL,
-        "fallback_models": settings.OLLAMA_FALLBACK_MODELS,
-        "temperature": settings.LLM_TEMPERATURE,
+        "primary_model": settings.LLM_PRIMARY_MODEL,
+        "fast_model": settings.LLM_FAST_MODEL,
         "max_tokens": settings.LLM_MAX_TOKENS,
+        "temperature": settings.LLM_TEMPERATURE,
         "timeout": settings.LLM_TIMEOUT,
+        "hf_token_configured": bool(settings.HF_TOKEN),
         "demo_mode": settings.LLM_DEMO_MODE,
-        "cache_enabled": settings.LLM_CACHE_ENABLED,
-        "supported_languages": settings.SUPPORTED_LANGUAGES,
-        "recommended_models": RECOMMENDED_MODELS,
-        "quality_settings": RESPONSE_QUALITY_SETTINGS
+        "supported_languages": settings.SUPPORTED_LANGUAGES
     }
 
-def validate_llm_config() -> dict:
-    """Валидирует конфигурацию LLM"""
+def get_database_config() -> dict:
+    """Возвращает конфигурацию базы данных"""
+    return {
+        "use_chromadb": settings.USE_CHROMADB,
+        "chromadb_path": settings.CHROMADB_PATH,
+        "embedding_model": settings.EMBEDDING_MODEL,
+        "chunk_size": settings.CHUNK_SIZE,
+        "chunk_overlap": settings.CHUNK_OVERLAP,
+        "max_context_documents": settings.MAX_CONTEXT_DOCUMENTS
+    }
+
+def get_api_config() -> dict:
+    """Возвращает конфигурацию API"""
+    return {
+        "project_name": settings.PROJECT_NAME,
+        "version": settings.VERSION,
+        "description": settings.DESCRIPTION,
+        "cors_origins": settings.CORS_ORIGINS,
+        "api_prefix": settings.API_V1_PREFIX
+    }
+
+def validate_config() -> dict:
+    """Простая валидация конфигурации"""
     issues = []
     warnings = []
     
-    # Проверяем базовые настройки
-    if not settings.OLLAMA_ENABLED:
-        warnings.append("Ollama disabled in configuration")
+    # Проверяем HF токен
+    if not settings.HF_TOKEN and not settings.LLM_DEMO_MODE:
+        warnings.append("HF_TOKEN not set - using public inference (rate limited)")
     
-    if settings.LLM_DEMO_MODE:
-        warnings.append("LLM running in demo mode")
+    # Проверяем пути
+    if settings.USE_CHROMADB:
+        try:
+            os.makedirs(settings.CHROMADB_PATH, exist_ok=True)
+        except Exception as e:
+            issues.append(f"Cannot create ChromaDB directory: {e}")
+    
+    # Проверяем настройки LLM
+    if settings.LLM_MAX_TOKENS < 50:
+        warnings.append("LLM_MAX_TOKENS is very low (< 50)")
     
     if settings.LLM_TEMPERATURE < 0 or settings.LLM_TEMPERATURE > 1:
-        issues.append("LLM temperature should be between 0 and 1")
+        issues.append("LLM_TEMPERATURE must be between 0 and 1")
     
-    if settings.LLM_MAX_TOKENS < 100:
-        issues.append("LLM max_tokens too low (minimum 100)")
-    
-    if settings.LLM_TIMEOUT < 10:
-        warnings.append("LLM timeout very low, may cause request failures")
+    # Проверяем размер файлов
+    if settings.MAX_FILE_SIZE > 50 * 1024 * 1024:  # 50MB
+        warnings.append("MAX_FILE_SIZE is very large - may cause memory issues")
     
     return {
         "valid": len(issues) == 0,
         "issues": issues,
-        "warnings": warnings
+        "warnings": warnings,
+        "config_summary": {
+            "llm_model": settings.LLM_PRIMARY_MODEL,
+            "chromadb_enabled": settings.USE_CHROMADB,
+            "hf_spaces": settings.HUGGINGFACE_SPACES,
+            "demo_mode": settings.LLM_DEMO_MODE
+        }
     }
+
+def get_environment_info() -> dict:
+    """Информация об окружении"""
+    return {
+        "huggingface_spaces": settings.HUGGINGFACE_SPACES,
+        "space_id": os.getenv("SPACE_ID"),
+        "demo_mode": settings.LLM_DEMO_MODE,
+        "log_level": settings.LOG_LEVEL,
+        "chromadb_enabled": settings.USE_CHROMADB,
+        "supported_languages": settings.SUPPORTED_LANGUAGES,
+        "environment_variables": {
+            "HF_TOKEN": "configured" if settings.HF_TOKEN else "not_set",
+            "USE_CHROMADB": os.getenv("USE_CHROMADB", "true"),
+            "LLM_DEMO_MODE": os.getenv("LLM_DEMO_MODE", "false"),
+            "LOG_LEVEL": os.getenv("LOG_LEVEL", "INFO"),
+            "SPACE_ID": "configured" if os.getenv("SPACE_ID") else "not_set"
+        }
+    }
+
+def get_full_config_summary() -> dict:
+    """Полная сводка конфигурации"""
+    validation = validate_config()
+    
+    return {
+        "validation": validation,
+        "llm": get_llm_config(),
+        "database": get_database_config(),
+        "api": get_api_config(),
+        "environment": get_environment_info(),
+        "categories": DOCUMENT_CATEGORIES,
+        "predefined_sites": {
+            "ukraine": len(UKRAINE_LEGAL_URLS),
+            "ireland": len(IRELAND_LEGAL_URLS)
+        }
+    }
+
+# ====================================
+# ЭКСПОРТ
+# ====================================
+
+__all__ = [
+    # Основной класс и экземпляр
+    "Settings",
+    "settings",
+    
+    # Константы
+    "API_METADATA",
+    "API_TAGS", 
+    "DOCUMENT_CATEGORIES",
+    "UKRAINE_LEGAL_URLS",
+    "IRELAND_LEGAL_URLS",
+    
+    # Функции конфигурации
+    "get_llm_config",
+    "get_database_config",
+    "get_api_config",
+    "validate_config",
+    "get_environment_info",
+    "get_full_config_summary"
+]
