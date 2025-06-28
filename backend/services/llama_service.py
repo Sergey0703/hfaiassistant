@@ -72,8 +72,7 @@ class LlamaService:
                             max_new_tokens=200,  # Уменьшено для скорости
                             temperature=0.3,
                             do_sample=True,
-                            return_full_text=False,
-                            timeout=60  # 60 секунд таймаут
+                            return_full_text=False
                         )
                         
                         logger.info(f"✅ LLM generation successful on attempt {attempt + 1}")
@@ -330,7 +329,7 @@ class LlamaService:
             "huggingface_hub_available": hf_available,
             "retry_enabled": True,
             "max_retries": 2,
-            "timeout": 60,
+            "api_timeout": "managed_by_huggingface",
             "recommendations": [
                 "Set HF_TOKEN for better rate limits and priority access",
                 "Use LLM_DEMO_MODE=true for testing without API calls",
