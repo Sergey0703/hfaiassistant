@@ -1,382 +1,267 @@
-# backend/app/dependencies.py - УПРОЩЁННАЯ ВЕРСИЯ БЕЗ LAZY LOADING
+# backend/services/llama_service.py - ПРАВИЛЬНЫЙ LLM СЕРВИС
 """
-Упрощённая система зависимостей без сложных fallback'ов и lazy loading
-Заменяет переусложнённый файл с background задачами и множественными сервисами
+Llama LLM Service using HuggingFace Inference API
 """
 
 import logging
-import os
 import time
-from typing import Optional, Dict, Any
+import os
+import asyncio
+from typing import List, Dict, Optional
+from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
-# ====================================
-# ГЛОБАЛЬНЫЕ СЕРВИСЫ (ПРОСТЫЕ)
-# ====================================
+@dataclass
+class LlamaResponse:
+    content: str
+    model: str
+    tokens_used: int
+    response_time: float
+    success: bool
+    error: Optional[str] = None
 
-# Сервисы инициализируются при первом обращении (но без сложностей)
-_document_service: Optional[object] = None
-_scraper_service: Optional[object] = None
-_llm_service: Optional[object] = None
-
-# Простые флаги состояния
-_services_initialized = False
-_initialization_errors = {}
-
-# ====================================
-# DEPENDENCY FUNCTIONS
-# ====================================
-
-def get_document_service():
-    """Получает document service с простой инициализацией"""
-    global _document_service
+class LlamaService:
+    """LLM сервис с HuggingFace Inference API"""
     
-    if _document_service is None:
-        logger.info("🔄 Initializing document service...")
+    def __init__(self):
+        self.service_type = "huggingface_inference"
+        self.model_name = "meta-llama/Llama-3.1-8B-Instruct"
+        self.hf_token = os.getenv("HF_TOKEN")
+        self.ready = True
+        
+        # Проверяем наличие токена
+        if not self.hf_token:
+            logger.warning("⚠️ HF_TOKEN not set - using public inference (rate limited)")
+        else:
+            logger.info("✅ HF_TOKEN configured for Llama service")
+        
+        logger.info(f"🦙 Llama service initialized: {self.model_name}")
+    
+    async def answer_legal_question(self, question: str, context_documents: List[Dict], language: str = "en"):
+        """Отвечает на юридический вопрос"""
+        start_time = time.time()
         
         try:
-            # Пробуем ChromaDB
-            use_chromadb = os.getenv("USE_CHROMADB", "true").lower() == "true"
+            # Проверяем demo режим
+            if os.getenv("LLM_DEMO_MODE", "false").lower() == "true":
+                return self._generate_demo_response(question, context_documents, language, start_time)
             
-            if use_chromadb:
-                try:
-                    from services.chroma_service import DocumentService
-                    chromadb_path = os.getenv("CHROMADB_PATH", "./chromadb_data")
-                    os.makedirs(chromadb_path, exist_ok=True)
-                    
-                    _document_service = DocumentService(chromadb_path)
-                    logger.info("✅ ChromaDB document service initialized")
-                    
-                except ImportError as e:
-                    logger.warning(f"ChromaDB not available: {e}, using simple fallback")
-                    _document_service = _create_simple_document_fallback()
-                    
-            else:
-                logger.info("ChromaDB disabled, using simple fallback")
-                _document_service = _create_simple_document_fallback()
+            # Строим промпт
+            prompt = self._build_prompt(question, context_documents, language)
+            
+            # Генерируем ответ через HuggingFace API
+            try:
+                from huggingface_hub import InferenceClient
                 
+                client = InferenceClient(
+                    model=self.model_name,
+                    token=self.hf_token
+                )
+                
+                # Генерируем ответ
+                response = client.text_generation(
+                    prompt,
+                    max_new_tokens=300,
+                    temperature=0.3,
+                    do_sample=True,
+                    return_full_text=False
+                )
+                
+                # Очищаем ответ
+                if isinstance(response, str):
+                    content = response.strip()
+                else:
+                    content = str(response).strip()
+                
+                response_time = time.time() - start_time
+                
+                return LlamaResponse(
+                    content=content,
+                    model=self.model_name,
+                    tokens_used=len(content.split()),
+                    response_time=response_time,
+                    success=True
+                )
+                
+            except ImportError:
+                logger.error("❌ huggingface_hub not installed")
+                return self._generate_error_response(question, language, "Missing huggingface_hub", start_time)
+            
+            except Exception as e:
+                logger.error(f"❌ HuggingFace API error: {e}")
+                return self._generate_error_response(question, language, str(e), start_time)
+        
         except Exception as e:
-            logger.error(f"❌ Document service initialization failed: {e}")
-            _initialization_errors['document_service'] = str(e)
-            _document_service = _create_simple_document_fallback()
+            logger.error(f"❌ General error in answer_legal_question: {e}")
+            return self._generate_error_response(question, language, str(e), start_time)
     
-    return _document_service
-
-def get_scraper_service():
-    """Получает scraper service с простой инициализацией"""
-    global _scraper_service
+    def _build_prompt(self, question: str, context_documents: List[Dict], language: str) -> str:
+        """Строит промпт для Llama"""
+        
+        if language == "uk":
+            system_prompt = "Ти юридичний консультант. Відповідай коротко і по суті на основі документів."
+            context_intro = "Документи:"
+            answer_intro = f"Питання: {question}\nВідповідь:"
+        else:
+            system_prompt = "You are a legal consultant. Answer concisely based on the provided documents."
+            context_intro = "Documents:"
+            answer_intro = f"Question: {question}\nAnswer:"
+        
+        # Формируем контекст
+        context_parts = []
+        for i, doc in enumerate(context_documents[:2]):  # Ограничиваем 2 документами
+            filename = doc.get('filename', f'Doc {i+1}')
+            content = doc.get('content', '')[:500]  # Ограничиваем длину
+            context_parts.append(f"{filename}: {content}")
+        
+        context = f"\n{context_intro}\n" + "\n".join(context_parts) if context_parts else ""
+        
+        # Собираем промпт
+        prompt = f"<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n{system_prompt}<|eot_id|>\n"
+        
+        if context:
+            prompt += f"<|start_header_id|>user<|end_header_id|>\n{context}\n\n{answer_intro}<|eot_id|>\n"
+        else:
+            prompt += f"<|start_header_id|>user<|end_header_id|>\n{answer_intro}<|eot_id|>\n"
+        
+        prompt += "<|start_header_id|>assistant<|end_header_id|>\n"
+        
+        return prompt
     
-    if _scraper_service is None:
-        logger.info("🔄 Initializing scraper service...")
-        
-        try:
-            from services.scraper_service import LegalSiteScraper
-            _scraper_service = LegalSiteScraper()
-            logger.info("✅ Scraper service initialized")
-            
-        except ImportError as e:
-            logger.warning(f"Scraper dependencies not available: {e}")
-            _initialization_errors['scraper_service'] = str(e)
-            _scraper_service = _create_simple_scraper_fallback()
-            
-        except Exception as e:
-            logger.error(f"❌ Scraper service initialization failed: {e}")
-            _initialization_errors['scraper_service'] = str(e)
-            _scraper_service = _create_simple_scraper_fallback()
-    
-    return _scraper_service
-
-def get_llm_service():
-    """Получает LLM service (новый Llama сервис)"""
-    global _llm_service
-    
-    if _llm_service is None:
-        logger.info("🔄 Initializing Llama LLM service...")
-        
-        try:
-            from services.llama_service import create_llama_service
-            _llm_service = create_llama_service()
-            logger.info("✅ Llama LLM service initialized")
-            
-        except Exception as e:
-            logger.error(f"❌ LLM service initialization failed: {e}")
-            _initialization_errors['llm_service'] = str(e)
-            _llm_service = _create_simple_llm_fallback()
-    
-    return _llm_service
-
-def get_services_status() -> Dict[str, Any]:
-    """Простой статус всех сервисов"""
-    # Инициализируем сервисы если ещё не сделали
-    doc_service = get_document_service()
-    scraper_service = get_scraper_service() 
-    llm_service = get_llm_service()
-    
-    return {
-        # Основные статусы
-        "document_service_available": doc_service is not None,
-        "scraper_available": scraper_service is not None,
-        "llm_available": llm_service is not None and getattr(llm_service, 'ready', False),
-        
-        # Типы сервисов
-        "document_service_type": getattr(doc_service, 'service_type', 'unknown'),
-        "scraper_service_type": getattr(scraper_service, 'service_type', 'unknown'),
-        "llm_service_type": getattr(llm_service, 'service_type', 'unknown'),
-        
-        # Простые флаги
-        "chromadb_enabled": _is_chromadb_enabled(),
-        "huggingface_spaces": os.getenv("SPACE_ID") is not None,
-        "demo_mode": _is_demo_mode(),
-        
-        # Ошибки инициализации
-        "initialization_errors": _initialization_errors,
-        "total_errors": len(_initialization_errors),
-        
-        # Окружение
-        "environment": "hf_spaces" if os.getenv("SPACE_ID") else "local",
-        "platform": "HuggingFace Spaces" if os.getenv("SPACE_ID") else "Local Development",
-        
-        # Время статуса
-        "status_time": time.time(),
-        "services_ready": all([
-            doc_service is not None,
-            scraper_service is not None, 
-            llm_service is not None
-        ])
-    }
-
-# ====================================
-# ПРОСТЫЕ FALLBACK СЕРВИСЫ
-# ====================================
-
-def _create_simple_document_fallback():
-    """Создаёт простой fallback для документов"""
-    
-    class SimpleDocumentFallback:
-        def __init__(self):
-            self.service_type = "simple_fallback"
-            
-        async def search(self, query: str, category: str = None, limit: int = 5, min_relevance: float = 0.3):
-            """Простой fallback поиск"""
-            return [{
-                "content": f"Document search is initializing. Your query: '{query}' will be processed once the full document service is ready.",
-                "filename": "system_message.txt",
-                "document_id": "fallback_001",
-                "relevance_score": 1.0,
-                "metadata": {
-                    "status": "fallback_mode",
-                    "query": query,
-                    "category": category,
-                    "service_type": "simple_fallback"
-                }
-            }]
-        
-        async def get_stats(self):
-            """Простая статистика"""
-            return {
-                "total_documents": 0,
-                "categories": ["general", "legislation", "jurisprudence"],
-                "database_type": "Simple Fallback",
-                "status": "service_initializing"
-            }
-        
-        async def get_all_documents(self):
-            return []
-        
-        async def delete_document(self, doc_id: str):
-            return False
-        
-        async def process_and_store_file(self, file_path: str, category: str = "general"):
-            return False
-    
-    return SimpleDocumentFallback()
-
-def _create_simple_scraper_fallback():
-    """Создаёт простой fallback для скрапера"""
-    
-    class SimpleScraperFallback:
-        def __init__(self):
-            self.service_type = "simple_fallback"
-            self.legal_sites_config = {}
-        
-        async def scrape_legal_site(self, url: str):
-            """Простой fallback скрапинг"""
-            return type('SimpleDoc', (), {
-                'url': url,
-                'title': f'Demo content from {url}',
-                'content': f'Web scraping service is initializing. Content from {url} will be available once the service is ready.',
-                'metadata': {
-                    'status': 'fallback_mode',
-                    'url': url,
-                    'service_type': 'simple_fallback'
-                },
-                'category': 'demo'
-            })()
-        
-        async def scrape_multiple_urls(self, urls, delay=1.0):
-            results = []
-            for url in urls:
-                doc = await self.scrape_legal_site(url)
-                results.append(doc)
-            return results
-    
-    return SimpleScraperFallback()
-
-def _create_simple_llm_fallback():
-    """Создаёт простой fallback для LLM"""
-    
-    class SimpleLLMFallback:
-        def __init__(self):
-            self.service_type = "simple_fallback"
-            self.ready = True  # Fallback всегда готов
-        
-        async def answer_legal_question(self, question: str, context_documents: list, language: str = "en"):
-            """Простой fallback ответ"""
-            from services.llama_service import LlamaResponse
-            
-            if language == "uk":
-                content = f"""🤖 **Система ініціалізується**
+    def _generate_demo_response(self, question: str, context_documents: List[Dict], language: str, start_time: float):
+        """Генерирует demo ответ"""
+        if language == "uk":
+            content = f"""🤖 **Demo режим активний**
 
 **Ваше питання:** {question}
 
-⏳ Llama юридичний консультант завантажується. Зазвичай це займає 1-2 хвилини.
+📚 Знайдено {len(context_documents)} документів у базі знань.
 
-📚 **Що буде доступно:**
-• Детальні відповіді на юридичні питання
-• Аналіз документів з бази знань
-• Підтримка українського та англійського права
+💡 **Demo відповідь:** Це демонстраційний режим Legal Assistant. У робочому режимі тут буде детальна відповідь від Llama-3.1-8B-Instruct на основі ваших юридичних документів.
 
-🔄 **Статус:** Підключення до Llama-3.1-8B-Instruct..."""
-            else:
-                content = f"""🤖 **System Initializing**
+🔧 **Для активації повної версії:**
+1. Отримайте токен на https://huggingface.co/settings/tokens
+2. Встановіть змінну HF_TOKEN
+3. Встановіть LLM_DEMO_MODE=false"""
+        else:
+            content = f"""🤖 **Demo Mode Active**
 
 **Your Question:** {question}
 
-⏳ Llama legal assistant is loading. This usually takes 1-2 minutes.
+📚 Found {len(context_documents)} documents in knowledge base.
 
-📚 **What will be available:**
-• Detailed answers to legal questions  
-• Analysis of documents from knowledge base
-• Support for Ukrainian and English law
+💡 **Demo Response:** This is Legal Assistant demo mode. In production mode, you would get detailed answers from Llama-3.1-8B-Instruct based on your legal documents.
 
-🔄 **Status:** Connecting to Llama-3.1-8B-Instruct..."""
+🔧 **To activate full version:**
+1. Get token at https://huggingface.co/settings/tokens
+2. Set HF_TOKEN environment variable
+3. Set LLM_DEMO_MODE=false"""
+        
+        return LlamaResponse(
+            content=content,
+            model="demo_mode",
+            tokens_used=len(content.split()),
+            response_time=time.time() - start_time,
+            success=True
+        )
+    
+    def _generate_error_response(self, question: str, language: str, error: str, start_time: float):
+        """Генерирует ответ при ошибке"""
+        if language == "uk":
+            content = f"""❌ **Помилка LLM сервісу**
+
+**Ваше питання:** {question}
+
+🔧 **Помилка:** {error}
+
+💡 **Рекомендації:**
+• Перевірте налаштування HF_TOKEN
+• Спробуйте demo режим: LLM_DEMO_MODE=true
+• Перевірте підключення до інтернету"""
+        else:
+            content = f"""❌ **LLM Service Error**
+
+**Your Question:** {question}
+
+🔧 **Error:** {error}
+
+💡 **Recommendations:**
+• Check HF_TOKEN configuration
+• Try demo mode: LLM_DEMO_MODE=true
+• Check internet connection"""
+        
+        return LlamaResponse(
+            content=content,
+            model="error_fallback",
+            tokens_used=len(content.split()),
+            response_time=time.time() - start_time,
+            success=False,
+            error=error
+        )
+    
+    async def get_service_status(self):
+        """Возвращает статус сервиса"""
+        return {
+            "service_type": self.service_type,
+            "model_name": self.model_name,
+            "ready": self.ready,
+            "hf_token_configured": bool(self.hf_token),
+            "demo_mode": os.getenv("LLM_DEMO_MODE", "false").lower() == "true",
+            "recommendations": [
+                "Set HF_TOKEN for better rate limits",
+                "Use LLM_DEMO_MODE=true for testing",
+                "Check https://huggingface.co/settings/tokens for token"
+            ]
+        }
+
+def create_llama_service():
+    """Создает Llama сервис"""
+    try:
+        return LlamaService()
+    except Exception as e:
+        logger.error(f"❌ Failed to create Llama service: {e}")
+        # Возвращаем fallback
+        return create_fallback_service()
+
+def create_fallback_service():
+    """Создает fallback сервис"""
+    class FallbackService:
+        def __init__(self):
+            self.service_type = "fallback"
+            self.ready = True
+        
+        async def answer_legal_question(self, question: str, context_documents: list, language: str = "en"):
+            if language == "uk":
+                content = f"""🔄 **Система ініціалізується**
+
+**Ваше питання:** {question}
+
+⚠️ LLM сервіс недоступний. Встановіть:
+1. HF_TOKEN - токен від HuggingFace
+2. LLM_DEMO_MODE=true для демо режиму
+
+📚 Знайдено {len(context_documents)} документів у базі."""
+            else:
+                content = f"""🔄 **System Initializing**
+
+**Your Question:** {question}
+
+⚠️ LLM service unavailable. Please set:
+1. HF_TOKEN - HuggingFace token
+2. LLM_DEMO_MODE=true for demo mode
+
+📚 Found {len(context_documents)} documents in database."""
             
             return LlamaResponse(
                 content=content,
-                model="simple_fallback",
+                model="fallback",
                 tokens_used=len(content.split()),
                 response_time=0.1,
                 success=True
             )
         
         async def get_service_status(self):
-            return {
-                "service_type": "simple_fallback",
-                "ready": True,
-                "initialization_error": "LLM service not initialized yet"
-            }
+            return {"service_type": "fallback", "ready": True}
     
-    return SimpleLLMFallback()
-
-# ====================================
-# UTILITY FUNCTIONS
-# ====================================
-
-def _is_chromadb_enabled() -> bool:
-    """Проверяет включён ли ChromaDB"""
-    if _document_service is None:
-        return False
-    return getattr(_document_service, 'service_type', '') != 'simple_fallback'
-
-def _is_demo_mode() -> bool:
-    """Проверяет режим демо"""
-    demo_env = os.getenv("LLM_DEMO_MODE", "false").lower()
-    return demo_env in ["true", "1", "yes"] or bool(_initialization_errors.get('llm_service'))
-
-def force_reinitialize_services():
-    """Принудительно переинициализирует все сервисы"""
-    global _document_service, _scraper_service, _llm_service, _initialization_errors
-    
-    logger.info("🔄 Force reinitializing all services...")
-    
-    _document_service = None
-    _scraper_service = None  
-    _llm_service = None
-    _initialization_errors.clear()
-    
-    # Переинициализируем
-    get_document_service()
-    get_scraper_service()
-    get_llm_service()
-    
-    logger.info("✅ All services reinitialized")
-
-def get_initialization_summary() -> Dict[str, Any]:
-    """Возвращает сводку по инициализации"""
-    status = get_services_status()
-    
-    return {
-        "services_ready": status["services_ready"],
-        "total_errors": status["total_errors"],
-        "initialization_errors": status["initialization_errors"],
-        "service_types": {
-            "document": status["document_service_type"],
-            "scraper": status["scraper_service_type"], 
-            "llm": status["llm_service_type"]
-        },
-        "fallback_services": sum(1 for t in [
-            status["document_service_type"],
-            status["scraper_service_type"],
-            status["llm_service_type"]
-        ] if "fallback" in t),
-        "recommendations": _get_initialization_recommendations(status)
-    }
-
-def _get_initialization_recommendations(status: Dict) -> list:
-    """Генерирует рекомендации по инициализации"""
-    recommendations = []
-    
-    if status["total_errors"] > 0:
-        recommendations.append("Some services failed to initialize - check logs for details")
-    
-    if "fallback" in status["llm_service_type"]:
-        recommendations.append("Install huggingface_hub for full LLM support: pip install huggingface_hub")
-    
-    if "fallback" in status["document_service_type"]:
-        recommendations.append("Install ChromaDB for vector search: pip install chromadb sentence-transformers")
-    
-    if "fallback" in status["scraper_service_type"]:
-        recommendations.append("Install scraping dependencies: pip install aiohttp beautifulsoup4")
-    
-    if status["services_ready"] and status["total_errors"] == 0:
-        recommendations.append("All services initialized successfully - system ready")
-    
-    return recommendations
-
-# ====================================
-# СОВМЕСТИМОСТЬ
-# ====================================
-
-# Константы для совместимости с существующим кодом
-SERVICES_AVAILABLE = True
-CHROMADB_ENABLED = True  # Будет определяться динамически
-
-# Функция для совместимости
-async def init_services():
-    """Функция для совместимости - сервисы инициализируются lazy"""
-    logger.info("📦 Services will initialize on first use (simplified approach)")
-    return True
-
-# Экспорт основных функций
-__all__ = [
-    "get_document_service",
-    "get_scraper_service", 
-    "get_llm_service",
-    "get_services_status",
-    "get_initialization_summary",
-    "force_reinitialize_services",
-    "init_services",
-    "SERVICES_AVAILABLE",
-    "CHROMADB_ENABLED"
-]
+    return FallbackService()
