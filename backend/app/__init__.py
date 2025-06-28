@@ -188,29 +188,45 @@ def _setup_react_static_files(app):
         from fastapi.staticfiles import StaticFiles
         from fastapi.responses import FileResponse
         
-        # Путь к React build
-        react_build_path = Path(__file__).parent.parent.parent / "frontend" / "build"
-        react_static_path = react_build_path / "static"
+        # Определяем пути для разных окружений
+        hf_spaces_static = Path(__file__).parent.parent / "static"
+        local_build_path = Path(__file__).parent.parent.parent / "frontend" / "build"
         
+        # Выбираем правильный путь
+        if hf_spaces_static.exists() and (hf_spaces_static / "index.html").exists():
+            react_build_path = hf_spaces_static
+            react_static_path = hf_spaces_static / "static"
+            logger.info(f"📁 Using HF Spaces React build: {react_build_path}")
+        elif local_build_path.exists():
+            react_build_path = local_build_path
+            react_static_path = local_build_path / "static"
+            logger.info(f"📁 Using local React build: {react_build_path}")
+        else:
+            logger.info("⚠️ No React build found")
+            _setup_api_only_root(app)
+            return
+        
+        # Монтируем статические файлы React
         if react_static_path.exists():
             app.mount("/static", StaticFiles(directory=react_static_path), name="react_static")
             logger.info(f"✅ React static files mounted: {react_static_path}")
         
         # React assets (manifest, favicon, etc.)
-        if react_build_path.exists():
-            react_assets = ["manifest.json", "favicon.ico", "robots.txt"]
-            
-            for asset in react_assets:
-                asset_path = react_build_path / asset
-                if asset_path.exists():
-                    def create_asset_handler(asset_name):
-                        async def serve_asset():
-                            return FileResponse(react_build_path / asset_name)
-                        return serve_asset
-                    
-                    app.get(f"/{asset}", include_in_schema=False)(create_asset_handler(asset))
+        react_assets = ["manifest.json", "favicon.ico", "robots.txt"]
         
-        # Корневой маршрут для React SPA (если index.html существует)
+        for asset in react_assets:
+            asset_path = react_build_path / asset
+            if asset_path.exists():
+                def create_asset_handler(asset_name, build_path):
+                    async def serve_asset():
+                        return FileResponse(build_path / asset_name)
+                    return serve_asset
+                
+                app.get(f"/{asset}", include_in_schema=False)(
+                    create_asset_handler(asset, react_build_path)
+                )
+        
+        # Корневой маршрут для React SPA
         index_path = react_build_path / "index.html"
         if index_path.exists():
             @app.get("/", include_in_schema=False)
@@ -219,28 +235,29 @@ def _setup_react_static_files(app):
             
             logger.info("✅ React SPA mounted at root path")
         else:
-            logger.info("⚠️ React build not found - API-only mode")
-            
-            @app.get("/")
-            async def root_fallback():
-                return {
-                    "message": "Legal Assistant API v2.0",
-                    "llm_model": "Llama-3.1-8B-Instruct", 
-                    "status": "API running, React frontend not built",
-                    "endpoints": {
-                        "api_docs": "/docs",
-                        "health": "/health",
-                        "chat": "/api/user/chat"
-                    },
-                    "build_react": [
-                        "cd frontend",
-                        "npm install",
-                        "npm run build"
-                    ]
-                }
+            _setup_api_only_root(app)
     
     except Exception as e:
         logger.warning(f"⚠️ React static files setup failed: {e}")
+        _setup_api_only_root(app)
+
+def _setup_api_only_root(app):
+    """Настраивает API-only режим"""
+    @app.get("/")
+    async def root_fallback():
+        return {
+            "message": "Legal Assistant API v2.0",
+            "llm_model": "Llama-3.1-8B-Instruct", 
+            "status": "API running, React frontend ready",
+            "endpoints": {
+                "api_docs": "/docs",
+                "health": "/health",
+                "chat": "/api/user/chat",
+                "search": "/api/user/search",
+                "admin": "/api/admin"
+            },
+            "react_status": "Files found, check static mounting"
+        }
 
 def _setup_error_handlers(app):
     """Настраивает обработчики ошибок"""
@@ -285,8 +302,16 @@ def _setup_error_handlers(app):
 
 def _check_react_build() -> bool:
     """Проверяет собрано ли React приложение"""
-    react_build_path = Path(__file__).parent.parent.parent / "frontend" / "build"
-    return (react_build_path / "index.html").exists()
+    # В HuggingFace Spaces React файлы копируются в ./static/
+    hf_spaces_path = Path(__file__).parent.parent / "static"
+    local_build_path = Path(__file__).parent.parent.parent / "frontend" / "build"
+    
+    # Проверяем HF Spaces путь (приоритет)
+    if (hf_spaces_path / "index.html").exists():
+        return True
+    
+    # Проверяем локальный путь
+    return (local_build_path / "index.html").exists()
 
 def _create_emergency_app(error: Exception):
     """Создаёт аварийное приложение"""
