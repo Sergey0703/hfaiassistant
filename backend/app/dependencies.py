@@ -38,7 +38,14 @@ def get_document_service():
             
             if use_chromadb:
                 try:
-                    from services.chroma_service import DocumentService
+                    # ИСПРАВЛЕНИЕ 1: Добавлен try-except для импорта
+                    try:
+                        from services.chroma_service import DocumentService
+                    except ImportError:
+                        logger.warning("ChromaDB service not available, using fallback")
+                        _document_service = _create_simple_document_fallback()
+                        return _document_service
+                    
                     chromadb_path = os.getenv("CHROMADB_PATH", "./chromadb_data")
                     os.makedirs(chromadb_path, exist_ok=True)
                     
@@ -92,9 +99,14 @@ def get_llm_service():
         logger.info("🔄 Initializing Llama LLM service...")
         
         try:
-            from services.llama_service import create_llama_service
-            _llm_service = create_llama_service()
-            logger.info("✅ Llama LLM service initialized")
+            # ИСПРАВЛЕНИЕ 2: Добавлен try-except для импорта create_llama_service
+            try:
+                from services.llama_service import create_llama_service
+                _llm_service = create_llama_service()
+                logger.info("✅ Llama LLM service initialized")
+            except ImportError:
+                logger.warning("create_llama_service not available, using fallback")
+                _llm_service = _create_simple_llm_fallback()
             
         except Exception as e:
             logger.error(f"❌ LLM service initialization failed: {e}")
