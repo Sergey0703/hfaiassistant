@@ -575,6 +575,7 @@ class DocumentProcessor:
     """Обработчик документов"""
     
     def __init__(self):
+        # ИСПРАВЛЕНО: Правильные ссылки на методы
         self.supported_formats = {
             '.txt': self._process_txt,
             '.md': self._process_txt,
@@ -633,6 +634,13 @@ class DocumentProcessor:
         except Exception as e:
             logger.error(f"Process file sync error: {e}")
             return None
+    
+    # ИСПРАВЛЕНО: Добавлен недостающий async метод _process_txt
+    async def _process_txt(self, file_path) -> str:
+        """ИСПРАВЛЕНИЕ: Добавлен недостающий async метод"""
+        return await asyncio.get_event_loop().run_in_executor(
+            None, self._process_txt_sync, file_path
+        )
     
     def _process_txt_sync(self, file_path) -> str:
         """Синхронная обработка текстовых файлов"""
@@ -702,6 +710,7 @@ class DocumentService:
     def __init__(self, db_path: str = "./chromadb_data"):
         self.processor = DocumentProcessor()
         self.vector_db = ChromaDBService(db_path)
+        self.service_type = "chromadb"  # Добавляем service_type
     
     async def process_and_store_file(self, file_path: str, category: str = "general") -> bool:
         """Обрабатывает файл и сохраняет в ChromaDB"""

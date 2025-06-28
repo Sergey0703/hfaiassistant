@@ -1,6 +1,6 @@
-# backend/app/dependencies.py - ЭКСТРЕННОЕ ИСПРАВЛЕНИЕ
+# backend/app/dependencies.py - ИСПРАВЛЕННАЯ ЛОГИКА
 """
-ЭКСТРЕННОЕ ИСПРАВЛЕНИЕ - убираем все background tasks и старые импорты
+ИСПРАВЛЕНО: Правильная логика fallback - LLM отвечает из знаний если нет документов
 """
 
 import logging
@@ -11,7 +11,7 @@ from typing import Optional, Dict, Any
 logger = logging.getLogger(__name__)
 
 # ====================================
-# ГЛОБАЛЬНЫЕ СЕРВИСЫ (БЕЗ BACKGROUND TASKS!)
+# ГЛОБАЛЬНЫЕ СЕРВИСЫ
 # ====================================
 
 _document_service: Optional[object] = None
@@ -26,7 +26,7 @@ _initialization_errors = {}
 # ====================================
 
 def get_document_service():
-    """Получает document service с простой инициализацией БЕЗ BACKGROUND TASKS"""
+    """Получает document service с правильной логикой fallback"""
     global _document_service
     
     if _document_service is None:
@@ -38,12 +38,12 @@ def get_document_service():
             
             if use_chromadb:
                 try:
-                    # ИСПРАВЛЕНИЕ 1: Добавлен try-except для импорта
+                    # ИСПРАВЛЕНИЕ: Добавлен try-except для импорта
                     try:
                         from services.chroma_service import DocumentService
                     except ImportError:
-                        logger.warning("ChromaDB service not available, using fallback")
-                        _document_service = _create_simple_document_fallback()
+                        logger.warning("ChromaDB service not available, using empty document service")
+                        _document_service = _create_empty_document_service()
                         return _document_service
                     
                     chromadb_path = os.getenv("CHROMADB_PATH", "./chromadb_data")
@@ -53,22 +53,23 @@ def get_document_service():
                     logger.info("✅ ChromaDB document service initialized")
                     
                 except ImportError as e:
-                    logger.warning(f"ChromaDB not available: {e}, using simple fallback")
-                    _document_service = _create_simple_document_fallback()
+                    logger.warning(f"ChromaDB not available: {e}, using empty document service")
+                    _document_service = _create_empty_document_service()
                     
             else:
-                logger.info("ChromaDB disabled, using simple fallback")
-                _document_service = _create_simple_document_fallback()
+                logger.info("ChromaDB disabled, using empty document service")
+                _document_service = _create_empty_document_service()
                 
         except Exception as e:
             logger.error(f"❌ Document service initialization failed: {e}")
             _initialization_errors['document_service'] = str(e)
-            _document_service = _create_simple_document_fallback()
+            # ИСПРАВЛЕНО: Используем пустой сервис вместо fallback
+            _document_service = _create_empty_document_service()
     
     return _document_service
 
 def get_scraper_service():
-    """Получает scraper service БЕЗ BACKGROUND TASKS"""
+    """Получает scraper service"""
     global _scraper_service
     
     if _scraper_service is None:
@@ -92,14 +93,14 @@ def get_scraper_service():
     return _scraper_service
 
 def get_llm_service():
-    """Получает LLM service БЕЗ BACKGROUND TASKS"""
+    """Получает LLM service"""
     global _llm_service
     
     if _llm_service is None:
         logger.info("🔄 Initializing Llama LLM service...")
         
         try:
-            # ИСПРАВЛЕНИЕ 2: Добавлен try-except для импорта create_llama_service
+            # ИСПРАВЛЕНИЕ: Добавлен try-except для импорта create_llama_service
             try:
                 from services.llama_service import create_llama_service
                 _llm_service = create_llama_service()
@@ -116,7 +117,7 @@ def get_llm_service():
     return _llm_service
 
 def get_services_status() -> Dict[str, Any]:
-    """Простой статус всех сервисов БЕЗ BACKGROUND TASKS"""
+    """Простой статус всех сервисов"""
     # Инициализируем сервисы если ещё не сделали
     doc_service = get_document_service()
     scraper_service = get_scraper_service() 
@@ -156,38 +157,28 @@ def get_services_status() -> Dict[str, Any]:
     }
 
 # ====================================
-# ПРОСТЫЕ FALLBACK СЕРВИСЫ БЕЗ ИМПОРТОВ
+# ИСПРАВЛЕННЫЕ СЕРВИСЫ
 # ====================================
 
-def _create_simple_document_fallback():
-    """Создаёт простой fallback для документов"""
+def _create_empty_document_service():
+    """ИСПРАВЛЕНО: Создаёт ПУСТОЙ сервис документов (не fallback!)"""
     
-    class SimpleDocumentFallback:
+    class EmptyDocumentService:
         def __init__(self):
-            self.service_type = "simple_fallback"
+            self.service_type = "empty_document_service"
             
         async def search(self, query: str, category: str = None, limit: int = 5, min_relevance: float = 0.3):
-            """Простой fallback поиск"""
-            return [{
-                "content": f"🔍 Document search is initializing. Your query: '{query}' will be processed once the full document service is ready.\n\n💡 The Llama legal assistant is starting up and will provide detailed responses shortly.",
-                "filename": "system_message.txt",
-                "document_id": "fallback_001",
-                "relevance_score": 1.0,
-                "metadata": {
-                    "status": "fallback_mode",
-                    "query": query,
-                    "category": category,
-                    "service_type": "simple_fallback"
-                }
-            }]
+            """ИСПРАВЛЕНО: Возвращает пустой список (не fallback сообщения!)"""
+            logger.debug(f"Empty document service: no results for '{query}'")
+            return []  # Пустой список позволяет LLM отвечать из своих знаний
         
         async def get_stats(self):
             """Простая статистика"""
             return {
                 "total_documents": 0,
                 "categories": ["general", "legislation", "jurisprudence"],
-                "database_type": "Simple Fallback",
-                "status": "service_initializing"
+                "database_type": "Empty Document Service",
+                "status": "no_documents_available"
             }
         
         async def get_all_documents(self):
@@ -197,16 +188,17 @@ def _create_simple_document_fallback():
             return False
         
         async def process_and_store_file(self, file_path: str, category: str = "general"):
+            logger.warning("Cannot store files: document service not available")
             return False
     
-    return SimpleDocumentFallback()
+    return EmptyDocumentService()
 
 def _create_simple_scraper_fallback():
     """Создаёт простой fallback для скрапера"""
     
     class SimpleScraperFallback:
         def __init__(self):
-            self.service_type = "simple_fallback"
+            self.service_type = "scraper_fallback"
             self.legal_sites_config = {}
         
         async def scrape_legal_site(self, url: str):
@@ -218,7 +210,7 @@ def _create_simple_scraper_fallback():
                 'metadata': {
                     'status': 'fallback_mode',
                     'url': url,
-                    'service_type': 'simple_fallback'
+                    'service_type': 'scraper_fallback'
                 },
                 'category': 'demo'
             })()
@@ -233,15 +225,15 @@ def _create_simple_scraper_fallback():
     return SimpleScraperFallback()
 
 def _create_simple_llm_fallback():
-    """Создаёт простой fallback для LLM БЕЗ ИМПОРТОВ"""
+    """Создаёт fallback для LLM ТОЛЬКО когда LLM недоступен"""
     
     class SimpleLLMFallback:
         def __init__(self):
-            self.service_type = "simple_fallback"
+            self.service_type = "llm_fallback"
             self.ready = True
         
         async def answer_legal_question(self, question: str, context_documents: list, language: str = "en"):
-            """Простой fallback ответ БЕЗ ИМПОРТОВ"""
+            """FALLBACK: Только когда LLM сервис полностью недоступен"""
             # Создаём простую структуру ответа без импортов
             class SimpleResponse:
                 def __init__(self, content, model, tokens_used, response_time, success):
@@ -252,37 +244,35 @@ def _create_simple_llm_fallback():
                     self.success = success
             
             if language == "uk":
-                content = f"""🤖 **Llama консультант запускається**
+                content = f"""🤖 **LLM сервіс тимчасово недоступний**
 
 **Ваше питання:** {question}
 
-⏳ Система Legal Assistant з Llama-3.1-8B-Instruct ініціалізується.
+❌ На жаль, Llama-3.1-8B-Instruct сервіс наразі недоступний.
 
-📚 **Незабаром буде доступно:**
-• Детальні відповіді на юридичні питання українською та англійською
-• Аналіз документів з бази знань  
-• Пошук релевантної правової інформації
-• Практичні рекомендації та поради
+💡 **Рекомендації:**
+• Спробуйте ще раз через кілька хвилин
+• Перевірте підключення до інтернету
+• Зверніться до адміністратора системи
 
-🔄 **Статус:** Підключення до Llama моделі... Будь ласка, зачекайте."""
+🔧 **Для адміністратора:** Перевірте налаштування LLM сервісу"""
             else:
-                content = f"""🤖 **Llama Assistant Starting**
+                content = f"""🤖 **LLM Service Temporarily Unavailable**
 
 **Your Question:** {question}
 
-⏳ Legal Assistant system with Llama-3.1-8B-Instruct is initializing.
+❌ Unfortunately, the Llama-3.1-8B-Instruct service is currently unavailable.
 
-📚 **Coming soon:**
-• Detailed legal Q&A in English and Ukrainian
-• Knowledge base document analysis
-• Relevant legal information search  
-• Practical recommendations and advice
+💡 **Recommendations:**
+• Try again in a few minutes
+• Check your internet connection
+• Contact system administrator
 
-🔄 **Status:** Connecting to Llama model... Please wait."""
+🔧 **For administrator:** Check LLM service configuration"""
             
             return SimpleResponse(
                 content=content,
-                model="llama_initializing",
+                model="llm_fallback",
                 tokens_used=len(content.split()),
                 response_time=0.1,
                 success=True
@@ -290,9 +280,9 @@ def _create_simple_llm_fallback():
         
         async def get_service_status(self):
             return {
-                "service_type": "simple_fallback",
+                "service_type": "llm_fallback",
                 "ready": True,
-                "initialization_error": "LLM service starting up"
+                "initialization_error": "LLM service not available"
             }
     
     return SimpleLLMFallback()
@@ -305,7 +295,7 @@ def _is_chromadb_enabled() -> bool:
     """Проверяет включён ли ChromaDB"""
     if _document_service is None:
         return False
-    return getattr(_document_service, 'service_type', '') != 'simple_fallback'
+    return getattr(_document_service, 'service_type', '') not in ['empty_document_service', 'simple_fallback']
 
 def _is_demo_mode() -> bool:
     """Проверяет режим демо"""
@@ -313,7 +303,7 @@ def _is_demo_mode() -> bool:
     return demo_env in ["true", "1", "yes"] or bool(_initialization_errors.get('llm_service'))
 
 # ====================================
-# СОВМЕСТИМОСТЬ (УДАЛЯЕМ BACKGROUND ФУНКЦИИ)
+# СОВМЕСТИМОСТЬ
 # ====================================
 
 # Константы для совместимости с существующим кодом
@@ -323,7 +313,7 @@ CHROMADB_ENABLED = True
 # Функция для совместимости
 async def init_services():
     """Функция для совместимости - сервисы инициализируются сразу"""
-    logger.info("📦 Services initialize on first use (NO BACKGROUND TASKS)")
+    logger.info("📦 Services initialize on first use")
     return True
 
 # Экспорт основных функций
