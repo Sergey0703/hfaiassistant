@@ -1,4 +1,4 @@
-# backend/app/config.py - УПРОЩЁННАЯ КОНФИГУРАЦИЯ
+# backend/app/config.py - УПРОЩЁННАЯ КОНФИГУРАЦИЯ (ПОЛНАЯ ВЕРСИЯ)
 """
 Упрощённая конфигурация без множественных настроек LLM и сложных валидаций
 Заменяет переусложнённый config.py с Ollama, GPTQ и множественными таймаутами
@@ -136,6 +136,10 @@ API_TAGS = [
     {
         "name": "Admin Stats",
         "description": "Statistics and analytics"
+    },
+    {
+        "name": "Admin LLM",
+        "description": "LLM management and monitoring"
     },
     {
         "name": "System",
@@ -283,6 +287,84 @@ def get_full_config_summary() -> dict:
     }
 
 # ====================================
+# ДОПОЛНИТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ СОВМЕСТИМОСТИ С АДМИН API
+# ====================================
+
+def validate_llm_config() -> dict:
+    """Валидация LLM конфигурации (для совместимости с админ API)"""
+    issues = []
+    warnings = []
+    
+    # Проверяем HF токен
+    if not settings.HF_TOKEN:
+        warnings.append("HF_TOKEN not set - using public inference (rate limited)")
+    
+    # Проверяем модели
+    if not settings.LLM_PRIMARY_MODEL:
+        issues.append("LLM_PRIMARY_MODEL not configured")
+    
+    if not settings.LLM_FAST_MODEL:
+        warnings.append("LLM_FAST_MODEL not configured - will use primary model")
+    
+    # Проверяем параметры
+    if settings.LLM_TEMPERATURE < 0 or settings.LLM_TEMPERATURE > 1:
+        issues.append("LLM_TEMPERATURE must be between 0 and 1")
+    
+    if settings.LLM_MAX_TOKENS < 10:
+        issues.append("LLM_MAX_TOKENS too low (minimum 10)")
+    
+    if settings.LLM_TIMEOUT < 5:
+        warnings.append("LLM_TIMEOUT very low - may cause request failures")
+    
+    # Проверяем доступность моделей
+    try:
+        from huggingface_hub import InferenceClient
+        huggingface_available = True
+    except ImportError:
+        huggingface_available = False
+        issues.append("huggingface_hub not installed - LLM service will not work")
+    
+    return {
+        "valid": len(issues) == 0,
+        "issues": issues,
+        "warnings": warnings,
+        "config": {
+            "primary_model": settings.LLM_PRIMARY_MODEL,
+            "fast_model": settings.LLM_FAST_MODEL,
+            "max_tokens": settings.LLM_MAX_TOKENS,
+            "temperature": settings.LLM_TEMPERATURE,
+            "timeout": settings.LLM_TIMEOUT,
+            "hf_token_configured": bool(settings.HF_TOKEN),
+            "demo_mode": settings.LLM_DEMO_MODE,
+            "huggingface_available": huggingface_available,
+            "supported_languages": settings.SUPPORTED_LANGUAGES
+        },
+        "recommendations": _get_llm_recommendations(issues, warnings, huggingface_available)
+    }
+
+def _get_llm_recommendations(issues: List[str], warnings: List[str], huggingface_available: bool) -> List[str]:
+    """Генерирует рекомендации по LLM конфигурации"""
+    recommendations = []
+    
+    if not huggingface_available:
+        recommendations.append("Install huggingface_hub: pip install huggingface_hub")
+    
+    if not settings.HF_TOKEN:
+        recommendations.append("Set HF_TOKEN environment variable for better rate limits")
+        recommendations.append("Get token at: https://huggingface.co/settings/tokens")
+    
+    if settings.LLM_TEMPERATURE > 0.5:
+        recommendations.append("Consider lower temperature (0.2-0.3) for more consistent legal advice")
+    
+    if settings.LLM_MAX_TOKENS > 500:
+        recommendations.append("Consider lower max_tokens for faster responses")
+    
+    if len(issues) == 0 and len(warnings) == 0:
+        recommendations.append("LLM configuration is optimal")
+    
+    return recommendations
+
+# ====================================
 # ЭКСПОРТ
 # ====================================
 
@@ -304,5 +386,8 @@ __all__ = [
     "get_api_config",
     "validate_config",
     "get_environment_info",
-    "get_full_config_summary"
+    "get_full_config_summary",
+    
+    # Совместимость с админ API
+    "validate_llm_config"
 ]
