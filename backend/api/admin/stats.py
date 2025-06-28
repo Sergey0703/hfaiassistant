@@ -1,6 +1,6 @@
 # ====================================
-# ФАЙЛ: backend/api/admin/stats.py (НОВЫЙ ФАЙЛ)
-# Создать новый файл для админских endpoints статистики
+# ФАЙЛ: backend/api/admin/stats.py (ИСПРАВЛЕННАЯ ВЕРСИЯ)
+# Заменить существующий файл полностью
 # ====================================
 
 """
@@ -24,44 +24,57 @@ async def get_admin_stats(
     document_service = Depends(get_document_service),
     services_status = Depends(get_services_status)
 ):
-    """Статистика для админ панели"""
+    """Статистика для админ панели - ИСПРАВЛЕННАЯ"""
     try:
-        # Базовая статистика
-        stats_data = {
-            "total_chats": len(chat_history),
-            "categories": ["general", "legislation", "jurisprudence", "government", "civil_rights", "scraped"],
-            "services_status": services_status
-        }
+        # Получаем статистику документов
+        total_documents = 0
+        categories = ["general", "legislation", "jurisprudence", "government", "civil_rights", "scraped"]
+        vector_db_info = None
+        vector_db_error = None
         
-        # Статистика документов
         if document_service:
             try:
                 vector_stats = await document_service.get_stats()
-                stats_data.update({
-                    "total_documents": vector_stats.get("total_documents", 0),
-                    "database_type": vector_stats.get("database_type", "Unknown"),
-                    "vector_db_info": vector_stats
-                })
+                total_documents = vector_stats.get("total_documents", 0)
                 
                 # Обновляем категории реальными данными
                 real_categories = vector_stats.get("categories", [])
                 if real_categories:
-                    stats_data["categories"] = real_categories
+                    categories = real_categories
+                
+                vector_db_info = vector_stats
                     
             except Exception as e:
                 logger.error(f"Error getting vector stats: {e}")
-                stats_data.update({
-                    "total_documents": 0,
-                    "vector_db_error": str(e),
-                    "database_type": "Error"
-                })
-        else:
-            stats_data.update({
-                "total_documents": 0,
-                "database_type": "Unavailable"
-            })
+                vector_db_error = str(e)
         
-        return AdminStats(**stats_data)
+        # ИСПРАВЛЕНО: Правильно формируем ответ
+        stats_data = AdminStats(
+            total_documents=total_documents,
+            total_chats=len(chat_history),
+            categories=categories,
+            services_status=services_status,  # Передаем как есть - Dict[str, Any]
+            vector_db_info=vector_db_info,
+            vector_db_error=vector_db_error,
+            
+            # Дополнительная информация
+            initialization_summary={
+                "services_ready": services_status.get("services_ready", False),
+                "total_errors": services_status.get("total_errors", 0),
+                "platform": services_status.get("platform", "Unknown")
+            },
+            
+            system_info={
+                "database_type": vector_db_info.get("database_type", "Unknown") if vector_db_info else "Unknown",
+                "chromadb_enabled": services_status.get("chromadb_enabled", False),
+                "demo_mode": services_status.get("demo_mode", False),
+                "environment": services_status.get("environment", "unknown")
+            },
+            
+            recommendations=_generate_admin_recommendations(services_status, total_documents, vector_db_error)
+        )
+        
+        return stats_data
         
     except Exception as e:
         logger.error(f"Stats error: {e}")
@@ -164,7 +177,7 @@ async def get_system_stats(services_status = Depends(get_services_status)):
         
         # Статус сервисов
         service_health = {
-            "all_services_healthy": all(services_status.values()),
+            "all_services_healthy": all(services_status.values()) if isinstance(services_status, dict) else False,
             "services_detail": services_status,
             "database_type": "ChromaDB" if CHROMADB_ENABLED else "SimpleVectorDB"
         }
@@ -199,83 +212,6 @@ async def get_system_stats(services_status = Depends(get_services_status)):
     except Exception as e:
         logger.error(f"System stats error: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to get system stats: {str(e)}")
-
-def _analyze_chat_history():
-    """Анализирует историю чатов"""
-    if not chat_history:
-        return {
-            "total_messages": 0,
-            "average_length": 0,
-            "languages": {},
-            "success_rate": 0
-        }
-    
-    total_length = sum(len(chat.get("message", "")) for chat in chat_history)
-    languages = {}
-    successful_queries = 0
-    
-    for chat in chat_history:
-        # Анализ языков
-        lang = chat.get("language", "unknown")
-        languages[lang] = languages.get(lang, 0) + 1
-        
-        # Успешные запросы (с источниками)
-        if chat.get("sources"):
-            successful_queries += 1
-    
-    return {
-        "total_messages": len(chat_history),
-        "average_length": total_length / len(chat_history),
-        "languages": languages,
-        "success_rate": (successful_queries / len(chat_history)) * 100
-    }
-
-async def _analyze_document_categories(document_service):
-    """Анализирует документы по категориям"""
-    try:
-        if not document_service:
-            return {"error": "Document service unavailable"}
-        
-        stats = await document_service.get_stats()
-        categories = stats.get("categories", [])
-        
-        # Если есть доступ к документам, анализируем их
-        category_counts = {}
-        
-        if CHROMADB_ENABLED:
-            try:
-                documents = await document_service.get_all_documents()
-                for doc in documents:
-                    category = doc.get("category", "unknown")
-                    category_counts[category] = category_counts.get(category, 0) + 1
-            except:
-                # Fallback к базовому списку категорий
-                for cat in categories:
-                    category_counts[cat] = 0
-        else:
-            # SimpleVectorDB версия
-            try:
-                import os, json
-                db_file = os.path.join(document_service.vector_db.persist_directory, "documents.json")
-                if os.path.exists(db_file):
-                    with open(db_file, 'r', encoding='utf-8') as f:
-                        documents = json.load(f)
-                    
-                    for doc in documents:
-                        category = doc.get("category", "unknown")
-                        category_counts[category] = category_counts.get(category, 0) + 1
-            except:
-                pass
-        
-        return {
-            "total_categories": len(categories),
-            "category_distribution": category_counts,
-            "most_popular": max(category_counts, key=category_counts.get) if category_counts else None
-        }
-        
-    except Exception as e:
-        logger.error(f"Category analysis error: {e}")
-        return {"error": str(e)}
 
 @router.get("/debug/chromadb-search")
 async def debug_chromadb_search(
@@ -401,7 +337,122 @@ async def debug_chromadb_search(
         return {
             "debug_info": {"error": str(e)},
             "recommendations": ["Check ChromaDB service status", "Verify embedding function"]
-        }        
+        }
+
+# ====================================
+# ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ
+# ====================================
+
+def _generate_admin_recommendations(services_status: dict, total_documents: int, vector_db_error: str) -> list:
+    """Генерирует рекомендации для админа"""
+    recommendations = []
+    
+    # Проверяем статус сервисов
+    if not services_status.get("services_ready", False):
+        recommendations.append("Some services are not ready - check logs for details")
+    
+    # Проверяем документы
+    if total_documents == 0:
+        recommendations.append("No documents in database - upload documents to enable AI responses")
+    elif total_documents < 5:
+        recommendations.append("Few documents available - add more for better AI responses")
+    
+    # Проверяем векторную БД
+    if vector_db_error:
+        recommendations.append(f"Vector database issue: {vector_db_error}")
+    
+    # Проверяем LLM
+    if not services_status.get("llm_available", False):
+        recommendations.append("LLM service not available - check HF_TOKEN configuration")
+    elif services_status.get("demo_mode", False):
+        recommendations.append("Demo mode active - set LLM_DEMO_MODE=false and configure HF_TOKEN for full AI")
+    
+    # Проверяем ошибки инициализации
+    if services_status.get("total_errors", 0) > 0:
+        recommendations.append("Service initialization errors detected - check logs")
+    
+    # Общие рекомендации
+    if not recommendations:
+        recommendations.append("System is running optimally")
+    
+    return recommendations
+
+def _analyze_chat_history():
+    """Анализирует историю чатов"""
+    if not chat_history:
+        return {
+            "total_messages": 0,
+            "average_length": 0,
+            "languages": {},
+            "success_rate": 0
+        }
+    
+    total_length = sum(len(chat.get("message", "")) for chat in chat_history)
+    languages = {}
+    successful_queries = 0
+    
+    for chat in chat_history:
+        # Анализ языков
+        lang = chat.get("language", "unknown")
+        languages[lang] = languages.get(lang, 0) + 1
+        
+        # Успешные запросы (с источниками)
+        if chat.get("sources"):
+            successful_queries += 1
+    
+    return {
+        "total_messages": len(chat_history),
+        "average_length": total_length / len(chat_history),
+        "languages": languages,
+        "success_rate": (successful_queries / len(chat_history)) * 100
+    }
+
+async def _analyze_document_categories(document_service):
+    """Анализирует документы по категориям"""
+    try:
+        if not document_service:
+            return {"error": "Document service unavailable"}
+        
+        stats = await document_service.get_stats()
+        categories = stats.get("categories", [])
+        
+        # Если есть доступ к документам, анализируем их
+        category_counts = {}
+        
+        if CHROMADB_ENABLED:
+            try:
+                documents = await document_service.get_all_documents()
+                for doc in documents:
+                    category = doc.get("category", "unknown")
+                    category_counts[category] = category_counts.get(category, 0) + 1
+            except:
+                # Fallback к базовому списку категорий
+                for cat in categories:
+                    category_counts[cat] = 0
+        else:
+            # SimpleVectorDB версия
+            try:
+                import os, json
+                db_file = os.path.join(document_service.vector_db.persist_directory, "documents.json")
+                if os.path.exists(db_file):
+                    with open(db_file, 'r', encoding='utf-8') as f:
+                        documents = json.load(f)
+                    
+                    for doc in documents:
+                        category = doc.get("category", "unknown")
+                        category_counts[category] = category_counts.get(category, 0) + 1
+            except:
+                pass
+        
+        return {
+            "total_categories": len(categories),
+            "category_distribution": category_counts,
+            "most_popular": max(category_counts, key=category_counts.get) if category_counts else None
+        }
+        
+    except Exception as e:
+        logger.error(f"Category analysis error: {e}")
+        return {"error": str(e)}
 
 async def _get_performance_stats(document_service):
     """Получает статистику производительности"""

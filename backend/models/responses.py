@@ -83,13 +83,23 @@ class ScrapeResponse(BaseModel):
     summary: Dict[str, Any] = Field(..., description="Сводка результатов")
 
 class AdminStats(BaseModel):
-    """Модель статистики админ панели"""
+    """Модель статистики админ панели - ИСПРАВЛЕННАЯ"""
     total_documents: int = Field(..., ge=0, description="Общее количество документов")
     total_chats: int = Field(..., ge=0, description="Общее количество чатов")
     categories: List[str] = Field(..., description="Список категорий")
-    services_status: Dict[str, bool] = Field(..., description="Статус сервисов")
+    
+    # ИСПРАВЛЕНО: services_status теперь Dict[str, Any] вместо Dict[str, bool]
+    services_status: Dict[str, Any] = Field(..., description="Статус сервисов")
+    
+    # Опциональные поля
     database_type: Optional[str] = Field(None, description="Тип базы данных")
     vector_db_info: Optional[Dict[str, Any]] = Field(None, description="Информация о векторной БД")
+    vector_db_error: Optional[str] = Field(None, description="Ошибка векторной БД")
+    
+    # Дополнительная информация для админ панели
+    initialization_summary: Optional[Dict[str, Any]] = Field(None, description="Сводка инициализации")
+    system_info: Optional[Dict[str, Any]] = Field(None, description="Системная информация")
+    recommendations: Optional[List[str]] = Field(None, description="Рекомендации")
 
 class ChatHistoryItem(BaseModel):
     """Модель элемента истории чата"""
@@ -107,7 +117,7 @@ class ChatHistoryResponse(BaseModel):
 class HealthCheckResponse(BaseModel):
     """Модель ответа проверки здоровья системы"""
     status: str = Field(..., description="Статус системы")
-    services: Dict[str, bool] = Field(..., description="Статус сервисов")
+    services: Dict[str, Any] = Field(..., description="Статус сервисов")
     vector_db: Optional[Dict[str, Any]] = Field(None, description="Информация о векторной БД")
     vector_db_error: Optional[str] = Field(None, description="Ошибка векторной БД")
 
