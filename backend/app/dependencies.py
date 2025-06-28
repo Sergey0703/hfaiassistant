@@ -92,8 +92,8 @@ def get_llm_service():
         logger.info("🔄 Initializing Llama LLM service...")
         
         try:
-            from services.llama_service import create_llama_service
-            _llm_service = create_llama_service()
+            from services.llama_service import LlamaService
+            _llm_service = LlamaService()
             logger.info("✅ Llama LLM service initialized")
             
         except Exception as e:
