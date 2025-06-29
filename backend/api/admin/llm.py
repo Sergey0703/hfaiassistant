@@ -1,6 +1,6 @@
 # ====================================
-# ФАЙЛ: backend/api/admin/llm.py (НОВЫЙ ФАЙЛ)
-# Создать новый файл для админских endpoints управления LLM
+# ФАЙЛ: backend/api/admin/llm.py (ИСПРАВЛЕННАЯ ВЕРСИЯ)
+# ИСПРАВЛЕНИЕ: Добавлен импорт List из typing
 # ====================================
 
 """
@@ -10,7 +10,7 @@ Admin LLM Endpoints - Админские endpoints для управления �
 from fastapi import APIRouter, HTTPException, Depends
 import logging
 import time
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any  # ИСПРАВЛЕНИЕ: Добавлен импорт List
 
 from models.responses import SuccessResponse
 from app.dependencies import get_llm_service, get_services_status

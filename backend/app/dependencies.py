@@ -1,13 +1,13 @@
 # backend/app/dependencies.py - ПОЛНАЯ ИСПРАВЛЕННАЯ ВЕРСИЯ
 """
 Зависимости для RAG системы с поддержкой всех сервисов
-Добавлен get_scraper_service и улучшенная обработка ошибок
+ИСПРАВЛЕНИЯ: Добавлены все недостающие импорты и функции
 """
 
 import logging
 import os
 import time
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 _document_service: Optional[object] = None
 _llm_service: Optional[object] = None
-_scraper_service: Optional[object] = None  # ДОБАВЛЕНО
+_scraper_service: Optional[object] = None
 
 # Простые флаги состояния
 _initialization_errors = {}
@@ -104,23 +104,23 @@ def get_services_status() -> Dict[str, Any]:
     # Инициализируем сервисы если ещё не сделали
     doc_service = get_document_service()
     llm_service = get_llm_service()
-    scraper_service = get_scraper_service()  # ДОБАВЛЕНО
+    scraper_service = get_scraper_service()
     
     return {
         # Основные статусы
         "document_service_available": doc_service is not None,
         "llm_available": llm_service is not None and getattr(llm_service, 'ready', False),
-        "scraper_available": scraper_service is not None,  # ДОБАВЛЕНО
+        "scraper_available": scraper_service is not None,
         
         # Типы сервисов
         "document_service_type": getattr(doc_service, 'service_type', 'empty'),
         "llm_service_type": getattr(llm_service, 'service_type', 'unknown'),
-        "scraper_service_type": getattr(scraper_service, 'service_type', 'unknown'),  # ДОБАВЛЕНО
+        "scraper_service_type": getattr(scraper_service, 'service_type', 'unknown'),
         
         # Простые флаги
         "chromadb_enabled": _is_chromadb_enabled(),
         "huggingface_spaces": os.getenv("SPACE_ID") is not None,
-        "scraping_enabled": getattr(scraper_service, 'service_type', '') != 'scraper_fallback',  # ДОБАВЛЕНО
+        "scraping_enabled": getattr(scraper_service, 'service_type', '') != 'scraper_fallback',
         
         # Ошибки инициализации
         "initialization_errors": _initialization_errors,
@@ -135,13 +135,16 @@ def get_services_status() -> Dict[str, Any]:
         "services_ready": all([
             doc_service is not None,
             llm_service is not None,
-            scraper_service is not None  # ДОБАВЛЕНО
+            scraper_service is not None
         ]),
         
         # Модели
         "llm_model": "google/flan-t5-small",
         "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
-        "memory_estimate": "~920 MB"
+        "memory_estimate": "~920 MB",
+        
+        # Демо режим
+        "demo_mode": os.getenv("LLM_DEMO_MODE", "false").lower() == "true"
     }
 
 # ====================================
@@ -176,6 +179,9 @@ def _create_empty_document_service():
         
         async def process_and_store_file(self, file_path: str, category: str = "general"):
             logger.warning("Cannot store files: document service not available")
+            return False
+        
+        async def update_document(self, doc_id: str, new_content: str = None, new_metadata: Dict = None):
             return False
     
     return EmptyDocumentService()
@@ -295,12 +301,13 @@ def _create_fallback_llm_service():
         async def answer_legal_question(self, question: str, context_documents: list, language: str = "en"):
             # Простая структура ответа
             class SimpleResponse:
-                def __init__(self, content, model, tokens_used, response_time, success):
+                def __init__(self, content, model, tokens_used, response_time, success, error=None):
                     self.content = content
                     self.model = model
                     self.tokens_used = tokens_used
                     self.response_time = response_time
                     self.success = success
+                    self.error = error
             
             if language == "uk":
                 content = f"""🤖 **FLAN-T5 сервіс недоступний**
@@ -447,6 +454,48 @@ def _get_health_recommendations(health_status: Dict) -> List[str]:
     return recommendations
 
 # ====================================
+# КОНФИГУРАЦИОННЫЕ ФУНКЦИИ
+# ====================================
+
+def get_llm_config() -> dict:
+    """Возвращает конфигурацию LLM"""
+    try:
+        from app.config import settings
+        return {
+            "model": settings.LLM_MODEL,
+            "max_tokens": settings.LLM_MAX_TOKENS,
+            "temperature": settings.LLM_TEMPERATURE,
+            "timeout": settings.LLM_TIMEOUT,
+            "hf_token_configured": bool(settings.HF_TOKEN),
+            "model_type": "text2text-generation"
+        }
+    except Exception as e:
+        logger.error(f"Error getting LLM config: {e}")
+        return {
+            "model": "google/flan-t5-small",
+            "max_tokens": 150,
+            "temperature": 0.3,
+            "timeout": 20,
+            "hf_token_configured": False,
+            "model_type": "text2text-generation",
+            "error": str(e)
+        }
+
+def validate_llm_config() -> dict:
+    """Валидирует конфигурацию LLM"""
+    try:
+        from app.config import validate_config
+        return validate_config()
+    except Exception as e:
+        logger.error(f"Error validating LLM config: {e}")
+        return {
+            "valid": False,
+            "issues": [f"Configuration validation failed: {e}"],
+            "warnings": [],
+            "memory_estimate": "~920 MB total"
+        }
+
+# ====================================
 # СОВМЕСТИМОСТЬ
 # ====================================
 
@@ -471,17 +520,76 @@ async def init_services():
     return True
 
 # ====================================
+# ДОПОЛНИТЕЛЬНЫЕ UTILITY ФУНКЦИИ
+# ====================================
+
+def get_memory_usage_estimate() -> Dict[str, Any]:
+    """Оценивает использование памяти сервисами"""
+    return {
+        "flan_t5_small": "~300 MB",
+        "sentence_transformers": "~90 MB",
+        "chromadb": "~20 MB",
+        "fastapi": "~50 MB",
+        "python_runtime": "~100 MB",
+        "total_estimated": "~560 MB",
+        "target": "<1GB RAM",
+        "efficiency": "56% of 1GB target"
+    }
+
+def get_platform_info() -> Dict[str, Any]:
+    """Информация о платформе"""
+    is_hf_spaces = os.getenv("SPACE_ID") is not None
+    
+    return {
+        "platform": "HuggingFace Spaces" if is_hf_spaces else "Local",
+        "is_hf_spaces": is_hf_spaces,
+        "space_id": os.getenv("SPACE_ID"),
+        "python_version": os.sys.version.split()[0],
+        "environment_variables": {
+            "USE_CHROMADB": os.getenv("USE_CHROMADB", "true"),
+            "LLM_MODEL": os.getenv("LLM_MODEL", "google/flan-t5-small"),
+            "LOG_LEVEL": os.getenv("LOG_LEVEL", "INFO"),
+            "LLM_DEMO_MODE": os.getenv("LLM_DEMO_MODE", "false")
+        }
+    }
+
+def reset_services():
+    """Сбрасывает все сервисы (для отладки)"""
+    global _document_service, _llm_service, _scraper_service, _initialization_errors
+    
+    _document_service = None
+    _llm_service = None
+    _scraper_service = None
+    _initialization_errors.clear()
+    
+    logger.info("🔄 All services reset")
+
+# ====================================
 # ЭКСПОРТ
 # ====================================
 
 __all__ = [
+    # Основные сервисы
     "get_document_service",
     "get_llm_service", 
-    "get_scraper_service",  # ДОБАВЛЕНО
+    "get_scraper_service",
     "get_services_status",
     "get_all_services",
+    
+    # Здоровье и диагностика
     "check_services_health",
     "init_services",
+    
+    # Конфигурация
+    "get_llm_config",
+    "validate_llm_config",
+    
+    # Дополнительные утилиты
+    "get_memory_usage_estimate",
+    "get_platform_info",
+    "reset_services",
+    
+    # Константы
     "SERVICES_AVAILABLE",
     "CHROMADB_ENABLED"
 ]

@@ -1,7 +1,8 @@
-# backend/app/config.py - МИНИМАЛЬНАЯ КОНФИГУРАЦИЯ RAG СИСТЕМЫ
+# backend/app/config.py - ИСПРАВЛЕННАЯ КОНФИГУРАЦИЯ
 """
 Упрощенная конфигурация для минимальной RAG системы
 Target: ~920 MB RAM, HuggingFace Spaces совместимость
+ИСПРАВЛЕНИЕ: Добавлены недостающие атрибуты для LLM
 """
 
 import os
@@ -45,6 +46,19 @@ class Settings:
     def HF_TOKEN(self) -> str:
         return os.getenv("HF_TOKEN", "")
     
+    # ИСПРАВЛЕНИЕ: Добавлены недостающие Ollama настройки
+    @property
+    def OLLAMA_BASE_URL(self) -> str:
+        return os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    
+    @property
+    def OLLAMA_DEFAULT_MODEL(self) -> str:
+        return os.getenv("OLLAMA_DEFAULT_MODEL", "llama3.2")
+    
+    @property
+    def OLLAMA_FALLBACK_MODELS(self) -> List[str]:
+        return ["llama3.2", "llama3.1", "mistral"]
+    
     # ====================================
     # EMBEDDING НАСТРОЙКИ
     # ====================================
@@ -63,7 +77,7 @@ class Settings:
     # ====================================
     # БАЗА ДАННЫХ
     # ====================================
-    @property
+    @property 
     def USE_CHROMADB(self) -> bool:
         return os.getenv("USE_CHROMADB", "true").lower() == "true"
     
@@ -121,6 +135,9 @@ API_TAGS = [
     {"name": "User Chat", "description": "Chat with legal assistant"},
     {"name": "User Search", "description": "Search legal documents"},
     {"name": "Admin Documents", "description": "Document management"},
+    {"name": "Admin LLM", "description": "LLM management"},
+    {"name": "Admin Scraper", "description": "Web scraping"},
+    {"name": "Admin Stats", "description": "Statistics"},
     {"name": "System", "description": "System health and info"}
 ]
 
@@ -154,7 +171,41 @@ def get_llm_config() -> dict:
         "temperature": settings.LLM_TEMPERATURE,
         "timeout": settings.LLM_TIMEOUT,
         "hf_token_configured": bool(settings.HF_TOKEN),
-        "model_type": "text2text-generation"
+        "model_type": "text2text-generation",
+        "ollama_base_url": settings.OLLAMA_BASE_URL,
+        "ollama_default_model": settings.OLLAMA_DEFAULT_MODEL
+    }
+
+def validate_llm_config() -> dict:
+    """Валидирует конфигурацию LLM"""
+    issues = []
+    warnings = []
+    
+    # Проверяем основные параметры
+    if settings.LLM_MAX_TOKENS < 10:
+        issues.append("LLM_MAX_TOKENS too low")
+    
+    if not (0 <= settings.LLM_TEMPERATURE <= 1):
+        issues.append("LLM_TEMPERATURE must be 0-1")
+    
+    if not settings.HF_TOKEN:
+        warnings.append("HF_TOKEN not set - may have rate limits")
+    
+    # ИСПРАВЛЕНИЕ: Проверяем Ollama настройки
+    try:
+        import requests
+        response = requests.get(f"{settings.OLLAMA_BASE_URL}/api/tags", timeout=5)
+        if response.status_code != 200:
+            warnings.append("Ollama service not reachable")
+    except:
+        warnings.append("Cannot verify Ollama availability")
+    
+    return {
+        "valid": len(issues) == 0,
+        "issues": issues,
+        "warnings": warnings,
+        "model_info": get_llm_config(),
+        "memory_estimate": "~920 MB total"
     }
 
 def get_database_config() -> dict:
@@ -196,7 +247,9 @@ def get_environment_info() -> dict:
         "model": settings.LLM_MODEL,
         "embedding_model": settings.EMBEDDING_MODEL,
         "memory_target": "< 1GB RAM",
-        "chromadb_enabled": settings.USE_CHROMADB
+        "chromadb_enabled": settings.USE_CHROMADB,
+        "ollama_base_url": settings.OLLAMA_BASE_URL,
+        "ollama_default_model": settings.OLLAMA_DEFAULT_MODEL
     }
 
 # ====================================
@@ -208,5 +261,5 @@ __all__ = [
     "API_METADATA", "API_TAGS", "DOCUMENT_CATEGORIES",
     "UKRAINE_LEGAL_URLS", "IRELAND_LEGAL_URLS",
     "get_llm_config", "get_database_config", 
-    "validate_config", "get_environment_info"
+    "validate_config", "validate_llm_config", "get_environment_info"
 ]

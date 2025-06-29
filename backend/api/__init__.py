@@ -1,20 +1,23 @@
 # ====================================
-# ФАЙЛ: backend/api/__init__.py (ПОЛНАЯ ВЕРСИЯ)
+# ФАЙЛ: backend/api/__init__.py (ПОЛНАЯ ИСПРАВЛЕННАЯ ВЕРСИЯ)
+# ИСПРАВЛЕНИЯ: Добавлены все недостающие импорты и обработка ошибок
 # ====================================
 
 """
 API Package - Конфигурация всех API маршрутов
+ИСПРАВЛЕНИЯ: Полные импорты, обработка ошибок, все endpoints
 """
 
 import logging
+import time
+from typing import List, Dict, Any, Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
-import time
 
 logger = logging.getLogger(__name__)
 
 def configure_fastapi_app(app: FastAPI):
-    """Конфигурирует все API маршруты"""
+    """Конфигурирует все API маршруты с полной обработкой ошибок"""
     
     initialization_status = {
         "user_routes": False,
@@ -58,7 +61,7 @@ def configure_fastapi_app(app: FastAPI):
             )
             
             initialization_status["user_routes"] = True
-            initialization_status["total_routes"] += 4  # Примерное количество user routes
+            initialization_status["total_routes"] += 6  # Примерное количество user routes
             logger.info("✅ User routes configured successfully")
             
         except ImportError as e:
@@ -67,13 +70,13 @@ def configure_fastapi_app(app: FastAPI):
             initialization_status["errors"].append(error_msg)
             
             # Создаем fallback user routes
-            @app.get("/api/user/status")
-            async def user_status():
-                return {
-                    "status": "❌ User routes not available",
-                    "error": str(e),
-                    "message": "User API modules missing"
-                }
+            _create_fallback_user_routes(app)
+        
+        except Exception as e:
+            error_msg = f"User routes configuration error: {e}"
+            logger.error(f"❌ {error_msg}")
+            initialization_status["errors"].append(error_msg)
+            _create_fallback_user_routes(app)
         
         # ====================================
         # АДМИНСКИЕ МАРШРУТЫ
@@ -129,7 +132,7 @@ def configure_fastapi_app(app: FastAPI):
             )
             
             initialization_status["admin_routes"] = True
-            initialization_status["total_routes"] += 15  # Примерное количество admin routes
+            initialization_status["total_routes"] += 20  # Примерное количество admin routes
             logger.info("✅ Admin routes configured successfully")
             
         except ImportError as e:
@@ -138,18 +141,13 @@ def configure_fastapi_app(app: FastAPI):
             initialization_status["errors"].append(error_msg)
             
             # Создаем fallback admin routes
-            @app.get("/api/admin/status")
-            async def admin_status():
-                return {
-                    "status": "❌ Admin routes not available",
-                    "error": str(e),
-                    "message": "Admin API modules missing",
-                    "recommendations": [
-                        "Check that all admin API files exist",
-                        "Verify imports in admin modules",
-                        "Check dependencies installation"
-                    ]
-                }
+            _create_fallback_admin_routes(app)
+            
+        except Exception as e:
+            error_msg = f"Admin routes configuration error: {e}"
+            logger.error(f"❌ {error_msg}")
+            initialization_status["errors"].append(error_msg)
+            _create_fallback_admin_routes(app)
         
         # ====================================
         # ОБЩИЕ API МАРШРУТЫ
@@ -185,6 +183,11 @@ def configure_fastapi_app(app: FastAPI):
                     "swagger": "/docs",
                     "redoc": "/redoc",
                     "openapi": "/openapi.json"
+                },
+                "models": {
+                    "llm": "google/flan-t5-small",
+                    "embedding": "sentence-transformers/all-MiniLM-L6-v2",
+                    "memory_target": "<1GB RAM"
                 }
             }
         
@@ -217,7 +220,12 @@ def configure_fastapi_app(app: FastAPI):
                     "timestamp": time.time(),
                     "api_routes": initialization_status,
                     "services": services_status,
-                    "total_routes_loaded": initialization_status["total_routes"]
+                    "total_routes_loaded": initialization_status["total_routes"],
+                    "platform": "HuggingFace Spaces" if services_status.get("huggingface_spaces") else "Local",
+                    "models": {
+                        "llm": "google/flan-t5-small",
+                        "embedding": "sentence-transformers/all-MiniLM-L6-v2"
+                    }
                 }
                 
                 if issues:
@@ -264,11 +272,63 @@ def configure_fastapi_app(app: FastAPI):
             return {
                 "total_api_routes": len(routes_info),
                 "routes": sorted(routes_info, key=lambda x: x['path']),
-                "initialization_status": initialization_status
+                "initialization_status": initialization_status,
+                "user_routes_loaded": initialization_status["user_routes"],
+                "admin_routes_loaded": initialization_status["admin_routes"],
+                "errors": initialization_status["errors"]
             }
         
+        @app.get("/api/status")
+        async def api_status_detailed():
+            """Детальный статус API"""
+            try:
+                from app.dependencies import get_services_status, get_memory_usage_estimate, get_platform_info
+                
+                services = get_services_status()
+                memory = get_memory_usage_estimate()
+                platform = get_platform_info()
+                
+                return {
+                    "api": {
+                        "version": "2.0.0",
+                        "status": "operational",
+                        "routes_loaded": initialization_status["total_routes"],
+                        "errors": len(initialization_status["errors"])
+                    },
+                    "services": services,
+                    "memory": memory,
+                    "platform": platform,
+                    "models": {
+                        "llm": {
+                            "name": "google/flan-t5-small",
+                            "type": "text2text-generation",
+                            "size": "~300 MB",
+                            "ready": services.get("llm_available", False)
+                        },
+                        "embedding": {
+                            "name": "sentence-transformers/all-MiniLM-L6-v2",
+                            "dimensions": 384,
+                            "size": "~90 MB"
+                        }
+                    },
+                    "features": {
+                        "chat": True,
+                        "search": True,
+                        "document_upload": True,
+                        "web_scraping": services.get("scraper_available", False),
+                        "admin_panel": True,
+                        "multilingual": True
+                    }
+                }
+                
+            except Exception as e:
+                return {
+                    "api": {"status": "error", "error": str(e)},
+                    "timestamp": time.time()
+                }
+        
         # ====================================
-        # ФИНАЛЬНЫЙ СТАТУС ИНИЦИАЛИЗАЦИИ
+        # FINALIZATION
         # ====================================
         
         total_errors = len(initialization_status["errors"])
@@ -280,31 +340,8 @@ def configure_fastapi_app(app: FastAPI):
             for error in initialization_status["errors"]:
                 logger.warning(f"   - {error}")
         
-        # Добавляем глобальный обработчик ошибок
-        @app.exception_handler(404)
-        async def not_found_handler(request, exc):
-            return JSONResponse(
-                status_code=404,
-                content={
-                    "detail": f"Endpoint not found: {request.url.path}",
-                    "available_endpoints": "/api",
-                    "documentation": "/docs",
-                    "suggestion": "Check /api for available endpoints"
-                }
-            )
-        
-        @app.exception_handler(500)
-        async def internal_error_handler(request, exc):
-            logger.error(f"Internal server error on {request.url.path}: {exc}")
-            return JSONResponse(
-                status_code=500,
-                content={
-                    "detail": "Internal server error",
-                    "path": str(request.url.path),
-                    "timestamp": time.time(),
-                    "help": "Check server logs for details"
-                }
-            )
+        # Добавляем глобальные обработчики ошибок
+        _setup_error_handlers(app)
         
         logger.info("🎯 API configuration completed")
         
@@ -312,16 +349,160 @@ def configure_fastapi_app(app: FastAPI):
         logger.error(f"❌ Critical error during API configuration: {e}")
         
         # Создаем минимальный API в случае критической ошибки
-        @app.get("/api/error")
-        async def api_error():
-            return {
-                "status": "❌ API configuration failed",
-                "error": str(e),
-                "message": "Critical API initialization error",
-                "timestamp": time.time()
-            }
+        _create_emergency_api(app, e)
         
         raise
+
+def _create_fallback_user_routes(app: FastAPI):
+    """Создает fallback user routes"""
+    
+    @app.get("/api/user/status")
+    async def user_status():
+        return {
+            "status": "❌ User routes not available",
+            "message": "User API modules missing or failed to load",
+            "available_endpoints": ["/api/user/status"],
+            "recommendations": [
+                "Check api/user/chat.py exists",
+                "Check api/user/search.py exists", 
+                "Verify imports in user modules",
+                "Check dependencies installation"
+            ]
+        }
+    
+    @app.post("/api/user/chat")
+    async def chat_fallback():
+        return {
+            "response": "❌ Chat service temporarily unavailable. User routes failed to load.",
+            "sources": [],
+            "error": "User API modules not loaded",
+            "recommendations": [
+                "Check server logs",
+                "Verify FLAN-T5 dependencies",
+                "Restart the server"
+            ]
+        }
+    
+    @app.post("/api/user/search")
+    async def search_fallback():
+        return {
+            "query": "",
+            "results": [],
+            "total_found": 0,
+            "error": "Search service temporarily unavailable",
+            "message": "User routes failed to load"
+        }
+
+def _create_fallback_admin_routes(app: FastAPI):
+    """Создает fallback admin routes"""
+    
+    @app.get("/api/admin/status")
+    async def admin_status():
+        return {
+            "status": "❌ Admin routes not available",
+            "message": "Admin API modules missing or failed to load",
+            "available_endpoints": ["/api/admin/status"],
+            "recommendations": [
+                "Check all admin API files exist",
+                "Verify imports in admin modules",
+                "Check dependencies installation",
+                "Check models.responses imports"
+            ]
+        }
+    
+    @app.get("/api/admin/stats")
+    async def stats_fallback():
+        return {
+            "total_documents": 0,
+            "total_chats": 0,
+            "categories": [],
+            "services_status": {},
+            "error": "Admin routes not loaded",
+            "message": "Statistics service temporarily unavailable"
+        }
+    
+    @app.get("/api/admin/documents")
+    async def documents_fallback():
+        return {
+            "documents": [],
+            "total": 0,
+            "message": "Documents service temporarily unavailable",
+            "error": "Admin routes not loaded"
+        }
+
+def _create_emergency_api(app: FastAPI, error: Exception):
+    """Создаёт экстренный API в случае критической ошибки"""
+    
+    @app.get("/api/emergency")
+    async def emergency_status():
+        return {
+            "status": "❌ API configuration failed",
+            "error": str(error),
+            "message": "Critical API initialization error",
+            "timestamp": time.time(),
+            "available_endpoints": ["/api/emergency", "/health"],
+            "recommendations": [
+                "Check all import statements",
+                "Verify all API module files exist",
+                "Check Python dependencies",
+                "Review server logs for details"
+            ]
+        }
+
+def _setup_error_handlers(app: FastAPI):
+    """Настраивает глобальные обработчики ошибок"""
+    
+    @app.exception_handler(404)
+    async def not_found_handler(request, exc):
+        path = str(request.url.path)
+        
+        if path.startswith("/api/"):
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "detail": f"API endpoint not found: {path}",
+                    "available_endpoints": "/api",
+                    "documentation": "/docs",
+                    "suggestion": "Check /api for available endpoints",
+                    "timestamp": time.time()
+                }
+            )
+        
+        return JSONResponse(
+            status_code=404,
+            content={
+                "detail": f"Page not found: {path}",
+                "api_documentation": "/docs",
+                "health_check": "/health",
+                "timestamp": time.time()
+            }
+        )
+    
+    @app.exception_handler(500)
+    async def internal_error_handler(request, exc):
+        logger.error(f"Internal server error on {request.url.path}: {exc}")
+        return JSONResponse(
+            status_code=500,
+            content={
+                "detail": "Internal server error",
+                "path": str(request.url.path),
+                "timestamp": time.time(),
+                "help": "Check server logs for details",
+                "api_documentation": "/docs"
+            }
+        )
+    
+    @app.exception_handler(HTTPException)
+    async def http_exception_handler(request, exc):
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={
+                "detail": exc.detail,
+                "path": str(request.url.path),
+                "status_code": exc.status_code,
+                "timestamp": time.time()
+            }
+        )
 
 def get_api_info():
     """Возвращает информацию об API для диагностики"""
@@ -380,7 +561,7 @@ def get_api_info():
         return {
             "status": "healthy" if available_count == total_modules else "partial",
             "summary": {
-                "total_routes": available_count * 3,  # Примерная оценка
+                "total_routes": available_count * 4,  # Примерная оценка
                 "available_modules": available_count,
                 "total_modules": total_modules,
                 "completion_rate": f"{available_count}/{total_modules}"
@@ -389,7 +570,8 @@ def get_api_info():
             "missing_modules": [
                 module for module, available in available_modules.items() 
                 if not available
-            ]
+            ],
+            "recommendations": _get_module_recommendations(available_modules)
         }
         
     except Exception as e:
@@ -401,6 +583,36 @@ def get_api_info():
                 "available_modules": 0
             }
         }
+
+def _get_module_recommendations(available_modules: Dict[str, bool]) -> List[str]:
+    """Генерирует рекомендации по отсутствующим модулям"""
+    recommendations = []
+    
+    missing = [module for module, available in available_modules.items() if not available]
+    
+    if not missing:
+        recommendations.append("All API modules loaded successfully")
+        return recommendations
+    
+    if "user_chat" in missing:
+        recommendations.append("Create api/user/chat.py with chat endpoints")
+    
+    if "user_search" in missing:
+        recommendations.append("Create api/user/search.py with search endpoints")
+    
+    if any("admin" in module for module in missing):
+        recommendations.append("Check admin API modules exist and have correct imports")
+    
+    if len(missing) > 3:
+        recommendations.append("Multiple API modules missing - check file structure")
+    
+    recommendations.extend([
+        "Verify all imports from models.requests and models.responses",
+        "Check that all dependencies are installed",
+        "Review server logs for import errors"
+    ])
+    
+    return recommendations
 
 # Экспорт основных функций
 __all__ = [
