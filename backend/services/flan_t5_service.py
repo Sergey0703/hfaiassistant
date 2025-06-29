@@ -1,7 +1,8 @@
-# backend/services/flan_t5_service.py - FLAN-T5 СЕРВИС
+# backend/services/flan_t5_service.py - ИСПРАВЛЕННЫЙ FLAN-T5 СЕРВИС
 """
 Минимальный сервис для FLAN-T5 Small модели
 Оптимизирован для < 1GB RAM использования
+ИСПРАВЛЕНИЕ: Синтаксическая ошибка в import torch на строке 157
 """
 
 import logging
@@ -154,8 +155,10 @@ class FlanT5Service:
             # Генерация
             max_new_tokens = int(os.getenv("LLM_MAX_TOKENS", "150"))
             
-            with import torch:
-                torch.no_grad():
+            # ИСПРАВЛЕНИЕ: Правильный импорт torch
+            import torch
+            
+            with torch.no_grad():
                 outputs = self.model.generate(
                     **inputs,
                     max_new_tokens=max_new_tokens,
