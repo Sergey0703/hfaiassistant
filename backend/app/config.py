@@ -1,7 +1,7 @@
-# backend/app/config.py - УПРОЩЁННАЯ КОНФИГУРАЦИЯ (ПОЛНАЯ ВЕРСИЯ)
+# backend/app/config.py - ПОЛНАЯ КОНФИГУРАЦИЯ С ПРИОРИТЕТОМ ENV VARIABLES
 """
-Упрощённая конфигурация без множественных настроек LLM и сложных валидаций
-Заменяет переусложнённый config.py с Ollama, GPTQ и множественными таймаутами
+Конфигурация с правильной обработкой переменных окружения HuggingFace Spaces
+Environment variables имеют ПРИОРИТЕТ над значениями по умолчанию в коде
 """
 
 import os
@@ -12,7 +12,7 @@ from typing import List
 # ====================================
 
 class Settings:
-    """Упрощённый класс настроек"""
+    """Класс настроек с приоритетом переменных окружения"""
     
     # Основные настройки API
     API_V1_PREFIX: str = "/api"
@@ -23,33 +23,85 @@ class Settings:
     # CORS
     CORS_ORIGINS: List[str] = [
         "http://localhost:3000",
-        "http://127.0.0.1:3000",
+        "http://127.0.0.1:3000", 
         "*"  # Для HuggingFace Spaces
     ]
     
     # ====================================
-    # LLAMA LLM НАСТРОЙКИ (УПРОЩЁННЫЕ)
+    # LLM НАСТРОЙКИ С ПРИОРИТЕТОМ ENV VARIABLES
     # ====================================
     
-    # Основные модели
-    LLM_PRIMARY_MODEL: str = "meta-llama/Llama-3.1-8B-Instruct"
-    LLM_FAST_MODEL: str = "meta-llama/Llama-3.2-3B-Instruct"
+    # КРИТИЧНО: Environment variables перезаписывают эти значения!
+    # Что вы видите в HF Spaces settings имеет приоритет
     
-    # Параметры генерации
-    LLM_MAX_TOKENS: int = 200
-    LLM_TEMPERATURE: float = 0.3  # Консервативно для юридических вопросов
-    LLM_TIMEOUT: int = 30  # Единый таймаут
+    # Проверенные рабочие модели (fallback если не задано в ENV)
+    _DEFAULT_PRIMARY_MODEL = "microsoft/phi-2"  # Лучшее качество
+    _DEFAULT_FAST_MODEL = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"  # Быстрая модель
+    _BACKUP_MODELS = [
+        "google/flan-t5-base",           # Самая стабильная
+        "microsoft/DialoGPT-small",      # Меньше medium, больше шансов работать
+        "distilgpt2",                    # Простая и надежная
+        "gpt2"                           # Последний fallback
+    ]
+    
+    # Приоритет: ENV -> Код
+    @property
+    def LLM_PRIMARY_MODEL(self) -> str:
+        # Проверяем разные варианты названий переменных
+        model = (
+            os.getenv("LLM_MODEL") or           # Ваша переменная в HF Spaces
+            os.getenv("LLM_PRIMARY_MODEL") or
+            os.getenv("HUGGINGFACE_MODEL") or
+            self._DEFAULT_PRIMARY_MODEL
+        )
+        print(f"🤖 Using LLM model: {model}")
+        return model
+    
+    @property 
+    def LLM_FAST_MODEL(self) -> str:
+        return os.getenv("LLM_FAST_MODEL", self._DEFAULT_FAST_MODEL)
+    
+    @property
+    def LLM_BACKUP_MODELS(self) -> List[str]:
+        # Добавляем резервные модели если основная не работает
+        backup_env = os.getenv("LLM_BACKUP_MODELS")
+        if backup_env:
+            return backup_env.split(",")
+        return self._BACKUP_MODELS
+    
+    # Параметры генерации (тоже можно настроить через ENV)
+    @property
+    def LLM_MAX_TOKENS(self) -> int:
+        return int(os.getenv("LLM_MAX_TOKENS", "200"))
+    
+    @property
+    def LLM_TEMPERATURE(self) -> float:
+        return float(os.getenv("LLM_TEMPERATURE", "0.3"))
+    
+    @property
+    def LLM_TIMEOUT(self) -> int:
+        return int(os.getenv("LLM_TIMEOUT", "30"))
     
     # HuggingFace настройки
-    HF_TOKEN: str = os.getenv("HF_TOKEN", "")
+    @property
+    def HF_TOKEN(self) -> str:
+        return os.getenv("HF_TOKEN", "")
+    
+    @property
+    def LLM_DEMO_MODE(self) -> bool:
+        return os.getenv("LLM_DEMO_MODE", "false").lower() == "true"
     
     # ====================================
     # БАЗА ДАННЫХ И ПОИСК
     # ====================================
     
-    # ChromaDB
-    USE_CHROMADB: bool = os.getenv("USE_CHROMADB", "true").lower() == "true"
-    CHROMADB_PATH: str = os.getenv("CHROMADB_PATH", "./chromadb_data")
+    @property
+    def USE_CHROMADB(self) -> bool:
+        return os.getenv("USE_CHROMADB", "true").lower() == "true"
+    
+    @property 
+    def CHROMADB_PATH(self) -> str:
+        return os.getenv("CHROMADB_PATH", "./chromadb_data")
     
     # Эмбеддинги
     EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
@@ -59,7 +111,7 @@ class Settings:
     # Поиск
     DEFAULT_SEARCH_LIMIT: int = 5
     MAX_SEARCH_LIMIT: int = 20
-    MAX_CONTEXT_DOCUMENTS: int = 2  # Упрощено для производительности
+    MAX_CONTEXT_DOCUMENTS: int = 2  # Оптимизировано для HF Spaces
     CONTEXT_TRUNCATE_LENGTH: int = 500  # Сокращено для скорости
     
     # ====================================
@@ -75,33 +127,73 @@ class Settings:
     
     SCRAPING_DELAY: float = 1.5
     SCRAPING_TIMEOUT: int = 15
-    MAX_URLS_PER_REQUEST: int = 10  # Уменьшено для стабильности
+    MAX_URLS_PER_REQUEST: int = 10
     
     # ====================================
     # ЛОГИРОВАНИЕ И МОНИТОРИНГ
     # ====================================
     
-    LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
+    @property
+    def LOG_LEVEL(self) -> str:
+        return os.getenv("LOG_LEVEL", "INFO")
     
     # ====================================
     # СПЕЦИАЛЬНЫЕ РЕЖИМЫ
     # ====================================
     
-    # Демо режим (если LLM недоступен)
-    LLM_DEMO_MODE: bool = os.getenv("LLM_DEMO_MODE", "false").lower() == "true"
-    
-    # HuggingFace Spaces
-    HUGGINGFACE_SPACES: bool = os.getenv("SPACE_ID") is not None
+    @property
+    def HUGGINGFACE_SPACES(self) -> bool:
+        return os.getenv("SPACE_ID") is not None
     
     # Языки
     SUPPORTED_LANGUAGES: List[str] = ["en", "uk"]
     DEFAULT_LANGUAGE: str = "en"
+    
+    def get_active_model_info(self) -> dict:
+        """Возвращает информацию об активной модели"""
+        return {
+            "primary_model": self.LLM_PRIMARY_MODEL,
+            "fast_model": self.LLM_FAST_MODEL, 
+            "backup_models": self.LLM_BACKUP_MODELS,
+            "source": "ENV variable" if os.getenv("LLM_MODEL") else "default config",
+            "demo_mode": self.LLM_DEMO_MODE,
+            "hf_token_configured": bool(self.HF_TOKEN),
+            "parameters": {
+                "max_tokens": self.LLM_MAX_TOKENS,
+                "temperature": self.LLM_TEMPERATURE,
+                "timeout": self.LLM_TIMEOUT
+            }
+        }
+    
+    def validate_model_availability(self) -> dict:
+        """Проверяет доступность настроенной модели"""
+        validation = {
+            "primary_model_set": bool(self.LLM_PRIMARY_MODEL),
+            "hf_token_available": bool(self.HF_TOKEN),
+            "known_working_models": [
+                "microsoft/phi-2",
+                "google/flan-t5-base", 
+                "TinyLlama/TinyLlama-1.1B-Chat-v1.0",
+                "microsoft/DialoGPT-small"
+            ],
+            "current_model": self.LLM_PRIMARY_MODEL,
+            "is_known_working": self.LLM_PRIMARY_MODEL in [
+                "microsoft/phi-2",
+                "google/flan-t5-base",
+                "TinyLlama/TinyLlama-1.1B-Chat-v1.0", 
+                "microsoft/DialoGPT-small",
+                "distilgpt2",
+                "gpt2"
+            ]
+        }
+        
+        return validation
 
 # Создаём глобальный экземпляр
 settings = Settings()
 
 # ====================================
-# КОНСТАНТЫ И СПРАВОЧНИКИ
+# КОНСТАНТЫ И СПРАВОЧНИКИ 
 # ====================================
 
 # API метаданные
@@ -122,7 +214,7 @@ API_TAGS = [
         "description": "User chat endpoints for legal assistance"
     },
     {
-        "name": "User Search", 
+        "name": "User Search",
         "description": "Document search endpoints for users"
     },
     {
@@ -130,7 +222,7 @@ API_TAGS = [
         "description": "Document management for administrators"
     },
     {
-        "name": "Admin Scraper",
+        "name": "Admin Scraper", 
         "description": "Web scraping for administrators"
     },
     {
@@ -150,8 +242,8 @@ API_TAGS = [
 # Категории документов
 DOCUMENT_CATEGORIES = [
     "general",
-    "legislation", 
-    "jurisprudence",
+    "legislation",
+    "jurisprudence", 
     "government",
     "civil_rights",
     "scraped",
@@ -179,17 +271,8 @@ IRELAND_LEGAL_URLS = [
 # ====================================
 
 def get_llm_config() -> dict:
-    """Возвращает конфигурацию LLM (упрощённую)"""
-    return {
-        "primary_model": settings.LLM_PRIMARY_MODEL,
-        "fast_model": settings.LLM_FAST_MODEL,
-        "max_tokens": settings.LLM_MAX_TOKENS,
-        "temperature": settings.LLM_TEMPERATURE,
-        "timeout": settings.LLM_TIMEOUT,
-        "hf_token_configured": bool(settings.HF_TOKEN),
-        "demo_mode": settings.LLM_DEMO_MODE,
-        "supported_languages": settings.SUPPORTED_LANGUAGES
-    }
+    """Возвращает конфигурацию LLM"""
+    return settings.get_active_model_info()
 
 def get_database_config() -> dict:
     """Возвращает конфигурацию базы данных"""
@@ -213,9 +296,14 @@ def get_api_config() -> dict:
     }
 
 def validate_config() -> dict:
-    """Простая валидация конфигурации"""
+    """Валидация конфигурации с проверкой модели"""
     issues = []
     warnings = []
+    
+    # Проверяем модель
+    model_validation = settings.validate_model_availability()
+    if not model_validation["is_known_working"]:
+        warnings.append(f"Model '{settings.LLM_PRIMARY_MODEL}' may not work - consider tested alternatives")
     
     # Проверяем HF токен
     if not settings.HF_TOKEN and not settings.LLM_DEMO_MODE:
@@ -235,16 +323,14 @@ def validate_config() -> dict:
     if settings.LLM_TEMPERATURE < 0 or settings.LLM_TEMPERATURE > 1:
         issues.append("LLM_TEMPERATURE must be between 0 and 1")
     
-    # Проверяем размер файлов
-    if settings.MAX_FILE_SIZE > 50 * 1024 * 1024:  # 50MB
-        warnings.append("MAX_FILE_SIZE is very large - may cause memory issues")
-    
     return {
         "valid": len(issues) == 0,
         "issues": issues,
         "warnings": warnings,
+        "model_info": model_validation,
         "config_summary": {
-            "llm_model": settings.LLM_PRIMARY_MODEL,
+            "active_model": settings.LLM_PRIMARY_MODEL,
+            "model_source": "ENV variable" if os.getenv("LLM_MODEL") else "default",
             "chromadb_enabled": settings.USE_CHROMADB,
             "hf_spaces": settings.HUGGINGFACE_SPACES,
             "demo_mode": settings.LLM_DEMO_MODE
@@ -260,8 +346,11 @@ def get_environment_info() -> dict:
         "log_level": settings.LOG_LEVEL,
         "chromadb_enabled": settings.USE_CHROMADB,
         "supported_languages": settings.SUPPORTED_LANGUAGES,
+        "active_model": settings.LLM_PRIMARY_MODEL,
+        "model_source": "ENV" if os.getenv("LLM_MODEL") else "CONFIG",
         "environment_variables": {
             "HF_TOKEN": "configured" if settings.HF_TOKEN else "not_set",
+            "LLM_MODEL": os.getenv("LLM_MODEL", "not_set"),
             "USE_CHROMADB": os.getenv("USE_CHROMADB", "true"),
             "LLM_DEMO_MODE": os.getenv("LLM_DEMO_MODE", "false"),
             "LOG_LEVEL": os.getenv("LOG_LEVEL", "INFO"),
@@ -286,83 +375,58 @@ def get_full_config_summary() -> dict:
         }
     }
 
-# ====================================
-# ДОПОЛНИТЕЛЬНЫЕ ФУНКЦИИ ДЛЯ СОВМЕСТИМОСТИ С АДМИН API
-# ====================================
-
 def validate_llm_config() -> dict:
     """Валидация LLM конфигурации (для совместимости с админ API)"""
-    issues = []
-    warnings = []
-    
-    # Проверяем HF токен
-    if not settings.HF_TOKEN:
-        warnings.append("HF_TOKEN not set - using public inference (rate limited)")
-    
-    # Проверяем модели
-    if not settings.LLM_PRIMARY_MODEL:
-        issues.append("LLM_PRIMARY_MODEL not configured")
-    
-    if not settings.LLM_FAST_MODEL:
-        warnings.append("LLM_FAST_MODEL not configured - will use primary model")
-    
-    # Проверяем параметры
-    if settings.LLM_TEMPERATURE < 0 or settings.LLM_TEMPERATURE > 1:
-        issues.append("LLM_TEMPERATURE must be between 0 and 1")
-    
-    if settings.LLM_MAX_TOKENS < 10:
-        issues.append("LLM_MAX_TOKENS too low (minimum 10)")
-    
-    if settings.LLM_TIMEOUT < 5:
-        warnings.append("LLM_TIMEOUT very low - may cause request failures")
-    
-    # Проверяем доступность моделей
-    try:
-        from huggingface_hub import InferenceClient
-        huggingface_available = True
-    except ImportError:
-        huggingface_available = False
-        issues.append("huggingface_hub not installed - LLM service will not work")
-    
+    return validate_config()
+
+# ====================================
+# МОДЕЛЬ НЕ РАБОТАЕТ? РЕКОМЕНДАЦИИ
+# ====================================
+
+def get_model_recommendations() -> dict:
+    """Рекомендации по моделям на основе опыта"""
     return {
-        "valid": len(issues) == 0,
-        "issues": issues,
-        "warnings": warnings,
-        "config": {
-            "primary_model": settings.LLM_PRIMARY_MODEL,
-            "fast_model": settings.LLM_FAST_MODEL,
-            "max_tokens": settings.LLM_MAX_TOKENS,
-            "temperature": settings.LLM_TEMPERATURE,
-            "timeout": settings.LLM_TIMEOUT,
-            "hf_token_configured": bool(settings.HF_TOKEN),
-            "demo_mode": settings.LLM_DEMO_MODE,
-            "huggingface_available": huggingface_available,
-            "supported_languages": settings.SUPPORTED_LANGUAGES
+        "tested_working": {
+            "microsoft/phi-2": "Лучшее качество, стабильная",
+            "google/flan-t5-base": "Самая надежная, быстрая",
+            "TinyLlama/TinyLlama-1.1B-Chat-v1.0": "Очень быстрая",
+            "microsoft/DialoGPT-small": "Для чатов, меньше medium",
+            "distilgpt2": "Простая и быстрая",
+            "gpt2": "Последний fallback"
         },
-        "recommendations": _get_llm_recommendations(issues, warnings, huggingface_available)
+        "not_recommended": {
+            "microsoft/DialoGPT-medium": "Часто не работает в HF API",
+            "microsoft/DialoGPT-large": "Слишком большая для HF free tier"
+        },
+        "current_setup": {
+            "your_model": settings.LLM_PRIMARY_MODEL,
+            "source": "ENV variable" if os.getenv("LLM_MODEL") else "config default",
+            "recommendation": "Попробуйте microsoft/phi-2 или google/flan-t5-base если не работает"
+        }
     }
 
-def _get_llm_recommendations(issues: List[str], warnings: List[str], huggingface_available: bool) -> List[str]:
-    """Генерирует рекомендации по LLM конфигурации"""
-    recommendations = []
+# ====================================
+# АВТОДИАГНОСТИКА ПРИ ЗАПУСКЕ
+# ====================================
+
+def print_config_summary():
+    """Выводит сводку конфигурации при запуске"""
+    model_info = settings.get_active_model_info()
+    print("\n🤖 LLM Configuration:")
+    print(f"   Primary Model: {model_info['primary_model']}")
+    print(f"   Source: {model_info['source']}")
+    print(f"   Demo Mode: {model_info['demo_mode']}")
+    print(f"   HF Token: {'✅ Set' if model_info['hf_token_configured'] else '❌ Not set'}")
     
-    if not huggingface_available:
-        recommendations.append("Install huggingface_hub: pip install huggingface_hub")
+    if not model_info['hf_token_configured']:
+        print("   💡 Tip: Set HF_TOKEN for better rate limits")
     
-    if not settings.HF_TOKEN:
-        recommendations.append("Set HF_TOKEN environment variable for better rate limits")
-        recommendations.append("Get token at: https://huggingface.co/settings/tokens")
-    
-    if settings.LLM_TEMPERATURE > 0.5:
-        recommendations.append("Consider lower temperature (0.2-0.3) for more consistent legal advice")
-    
-    if settings.LLM_MAX_TOKENS > 500:
-        recommendations.append("Consider lower max_tokens for faster responses")
-    
-    if len(issues) == 0 and len(warnings) == 0:
-        recommendations.append("LLM configuration is optimal")
-    
-    return recommendations
+    if model_info['primary_model'] == "microsoft/DialoGPT-medium":
+        print("   ⚠️ Warning: DialoGPT-medium often fails - try microsoft/phi-2")
+
+# Автоматический вызов при импорте (только в dev режиме)
+if os.getenv("DEBUG") or os.getenv("SHOW_CONFIG_SUMMARY"):
+    print_config_summary()
 
 # ====================================
 # ЭКСПОРТ
@@ -370,24 +434,24 @@ def _get_llm_recommendations(issues: List[str], warnings: List[str], huggingface
 
 __all__ = [
     # Основной класс и экземпляр
-    "Settings",
+    "Settings", 
     "settings",
     
     # Константы
     "API_METADATA",
-    "API_TAGS", 
+    "API_TAGS",
     "DOCUMENT_CATEGORIES",
     "UKRAINE_LEGAL_URLS",
     "IRELAND_LEGAL_URLS",
     
     # Функции конфигурации
     "get_llm_config",
-    "get_database_config",
+    "get_database_config", 
     "get_api_config",
     "validate_config",
     "get_environment_info",
     "get_full_config_summary",
-    
-    # Совместимость с админ API
-    "validate_llm_config"
+    "validate_llm_config",
+    "get_model_recommendations",
+    "print_config_summary"
 ]
