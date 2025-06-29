@@ -1,8 +1,7 @@
-# backend/services/flan_t5_service.py - ИСПРАВЛЕННЫЙ FLAN-T5 СЕРВИС
+# backend/services/flan_t5_service.py - ИСПРАВЛЕННЫЙ БЕЗ ACCELERATE
 """
 Минимальный сервис для FLAN-T5 Small модели
-Оптимизирован для < 1GB RAM использования
-ИСПРАВЛЕНИЕ: Синтаксическая ошибка в import torch на строке 157
+ИСПРАВЛЕНИЕ: Убран device_map для избежания accelerate зависимости
 """
 
 import logging
@@ -24,7 +23,7 @@ class T5Response:
     error: Optional[str] = None
 
 class FlanT5Service:
-    """Упрощенный сервис для FLAN-T5 Small"""
+    """Упрощенный сервис для FLAN-T5 Small БЕЗ accelerate"""
     
     def __init__(self):
         self.service_type = "flan_t5"
@@ -38,7 +37,7 @@ class FlanT5Service:
         self._load_model()
     
     def _load_model(self):
-        """Загружает модель FLAN-T5"""
+        """Загружает модель FLAN-T5 без accelerate"""
         try:
             from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
             
@@ -50,20 +49,35 @@ class FlanT5Service:
                 token=self.hf_token if self.hf_token else None
             )
             
-            # Загружаем модель
+            # ИСПРАВЛЕНИЕ: Загружаем модель БЕЗ device_map для избежания accelerate
             self.model = AutoModelForSeq2SeqLM.from_pretrained(
                 self.model_name,
                 token=self.hf_token if self.hf_token else None,
-                torch_dtype="auto",
-                device_map="auto" if self._has_cuda() else "cpu"
+                torch_dtype="auto"
+                # Убрали device_map="auto" чтобы избежать accelerate зависимость
             )
             
+            # Перемещаем модель на правильное устройство вручную
+            device = self._get_device()
+            self.model = self.model.to(device)
+            
             self.ready = True
-            logger.info("✅ FLAN-T5 model loaded successfully")
+            logger.info(f"✅ FLAN-T5 model loaded successfully on {device}")
             
         except Exception as e:
             logger.error(f"❌ Failed to load FLAN-T5 model: {e}")
             self.ready = False
+    
+    def _get_device(self):
+        """Определяет устройство без accelerate"""
+        try:
+            import torch
+            if torch.cuda.is_available():
+                return "cuda"
+            else:
+                return "cpu"
+        except:
+            return "cpu"
     
     def _has_cuda(self) -> bool:
         """Проверяет доступность CUDA"""
@@ -143,6 +157,11 @@ class FlanT5Service:
     def _generate_sync(self, prompt: str) -> str:
         """Синхронная генерация с T5"""
         try:
+            import torch
+            
+            # Получаем устройство модели
+            device = next(self.model.parameters()).device
+            
             # Токенизация
             inputs = self.tokenizer(
                 prompt,
@@ -152,11 +171,11 @@ class FlanT5Service:
                 padding=True
             )
             
+            # Перемещаем inputs на то же устройство что и модель
+            inputs = {k: v.to(device) for k, v in inputs.items()}
+            
             # Генерация
             max_new_tokens = int(os.getenv("LLM_MAX_TOKENS", "150"))
-            
-            # ИСПРАВЛЕНИЕ: Правильный импорт torch
-            import torch
             
             with torch.no_grad():
                 outputs = self.model.generate(
@@ -316,6 +335,7 @@ class FlanT5Service:
             "ready": self.ready,
             "hf_token_configured": bool(self.hf_token),
             "cuda_available": self._has_cuda(),
+            "device": self._get_device(),
             "memory_usage": "~400 MB"
         }
 

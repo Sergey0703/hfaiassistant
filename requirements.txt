@@ -1,6 +1,7 @@
 # ====================================
-# MINIMAL RAG SYSTEM REQUIREMENTS
+# MINIMAL RAG SYSTEM REQUIREMENTS - ОБНОВЛЕННАЯ ВЕРСИЯ
 # Target: <1GB RAM, HuggingFace Spaces optimized
+# ИСПРАВЛЕНИЯ: Добавлен accelerate для FLAN-T5
 # ====================================
 
 # ====================================
@@ -17,6 +18,7 @@ pydantic==2.5.0
 transformers>=4.35.0,<5.0.0
 torch>=2.1.0,<3.0.0  # CPU version
 tokenizers>=0.15.0
+accelerate>=0.24.0   # ДОБАВЛЕНО: Нужно для FLAN-T5 device_map
 
 # ====================================
 # EMBEDDINGS - SENTENCE TRANSFORMERS
@@ -54,60 +56,34 @@ tqdm==4.66.1
 python-dateutil==2.8.2
 
 # ====================================
-# REMOVED HEAVY DEPENDENCIES:
-# ====================================
-# ❌ llama-cpp-python (300MB+)
-# ❌ auto-gptq (500MB+) 
-# ❌ accelerate (100MB+)
-# ❌ safetensors (heavy)
-# ❌ optimum (not needed)
-# ❌ pandas (100MB+)
-# ❌ openpyxl, PyPDF2, python-docx
-# ❌ psutil, cryptography
-# ❌ lxml (XML parsing)
-
-# ====================================
-# INSTALLATION INSTRUCTIONS:
-# ====================================
-
-# 1. BASIC INSTALL:
-# pip install -r requirements.txt
-
-# 2. PYTORCH CPU (if needed):
-# pip install torch --index-url https://download.pytorch.org/whl/cpu
-
-# 3. FOR HUGGINGFACE SPACES:
-# These dependencies are automatically installed
-
-# ====================================
-# MEMORY FOOTPRINT ESTIMATE:
+# MEMORY FOOTPRINT ESTIMATE (ОБНОВЛЕНО):
 # ====================================
 # FastAPI + deps: ~50 MB
 # Transformers: ~100 MB
+# Accelerate: ~50 MB (ДОБАВЛЕНО)
 # Sentence-transformers: ~80 MB
 # ChromaDB: ~30 MB
 # PyTorch CPU: ~150 MB
 # Other deps: ~50 MB
-# TOTAL BASE: ~460 MB
+# TOTAL BASE: ~510 MB
 
 # MODELS:
 # FLAN-T5-Small: ~300 MB
 # all-MiniLM-L6-v2: ~90 MB
 # TOTAL MODELS: ~390 MB
 
-# GRAND TOTAL: ~850 MB
+# GRAND TOTAL: ~900 MB
 # TARGET: <1GB ✅
 
 # ====================================
-# COMPATIBILITY:
+# ENVIRONMENT VARIABLES (Добавить в .env):
 # ====================================
-# ✅ Python 3.8+
-# ✅ HuggingFace Spaces
-# ✅ CPU-only environments
-# ✅ Low memory systems
-# ✅ Docker containers
+# ANONYMIZED_TELEMETRY=false  # Отключает ChromaDB telemetry
+# HF_HOME=/home/user/app/.cache  # Задает кэш HuggingFace
+# TRANSFORMERS_CACHE=/home/user/app/.cache  # Устарело но для совместимости
 
 # ====================================
-# QUICK TEST:
+# QUICK FIX INSTALLATION:
 # ====================================
-# python -c "import fastapi, transformers, sentence_transformers, chromadb; print('✅ All imports OK')"
+# pip install accelerate
+# export ANONYMIZED_TELEMETRY=false
