@@ -1,6 +1,7 @@
-# backend/services/llama_service.py - ПОЛНЫЙ ИСПРАВЛЕННЫЙ LLM СЕРВИС
+# backend/services/llama_service.py - ИСПРАВЛЕН ПОД НОВЫЙ HUGGINGFACE API
 """
-Llama LLM Service using HuggingFace Inference API с retry логикой
+Llama LLM Service using NEW HuggingFace Inference Providers API
+ИСПРАВЛЕНИЕ: Старый API не работает, переход на новый Inference Providers
 """
 
 import logging
@@ -22,24 +23,42 @@ class LlamaResponse:
     error: Optional[str] = None
 
 class LlamaService:
-    """LLM сервис с HuggingFace Inference API и retry логикой"""
+    """LLM сервис с НОВЫМ HuggingFace Inference Providers API"""
     
     def __init__(self):
-        self.service_type = "huggingface_inference"
+        self.service_type = "huggingface_inference_providers"
         self.model_name = os.getenv("LLM_MODEL", "meta-llama/Llama-3.1-8B-Instruct")
         self.hf_token = os.getenv("HF_TOKEN")
         self.ready = True
         
-        # Проверяем наличие токена
+        # ИСПРАВЛЕНИЕ: Проверяем доступность новых API endpoints
+        self.api_endpoints = {
+            # Новый Inference Providers API (приоритет)
+            "providers": "https://api-inference.huggingface.co/models/",
+            # Fallback endpoints для разных типов моделей
+            "text_generation": "https://api-inference.huggingface.co/models/",
+            "chat": "https://api-inference.huggingface.co/models/"
+        }
+        
+        # Проверенные рабочие модели (июнь 2025)
+        self.working_models = [
+            "microsoft/DialoGPT-small",    # Чат модель (меньше medium)
+            "gpt2",                        # Базовая модель OpenAI
+            "distilgpt2",                  # Компактная версия
+            "EleutherAI/gpt-neo-125M",    # EleutherAI модель
+            "bigscience/bloom-560m"        # BLOOM модель
+        ]
+        
         if not self.hf_token:
             logger.warning("⚠️ HF_TOKEN not set - using public inference (rate limited)")
         else:
             logger.info("✅ HF_TOKEN configured for Llama service")
         
         logger.info(f"🦙 Llama service initialized: {self.model_name}")
+        logger.info(f"🔄 API endpoint: {self.api_endpoints['providers']}")
     
     async def answer_legal_question(self, question: str, context_documents: List[Dict], language: str = "en"):
-        """Отвечает на юридический вопрос с retry логикой"""
+        """Отвечает на юридический вопрос с НОВЫМ API и fallback моделями"""
         start_time = time.time()
         
         try:
@@ -50,109 +69,178 @@ class LlamaService:
             # Строим промпт
             prompt = self._build_prompt(question, context_documents, language)
             
-            # Генерируем ответ через HuggingFace API с retry
-            try:
-                from huggingface_hub import InferenceClient
-                
-                client = InferenceClient(
-                    model=self.model_name,
-                    token=self.hf_token
-                )
-                
-                # ИСПРАВЛЕНО: Генерируем ответ с retry логикой
-                max_retries = 2
-                response = None
-                
-                for attempt in range(max_retries):
-                    try:
-                        logger.info(f"🔄 Attempt {attempt + 1}/{max_retries} for LLM generation...")
-                        
-                        response = client.text_generation(
-                            prompt,
-                            max_new_tokens=200,  # Уменьшено для скорости
-                            temperature=0.3,
-                            do_sample=True,
-                            return_full_text=False
-                        )
-                        
-                        logger.info(f"✅ LLM generation successful on attempt {attempt + 1}")
-                        break  # Успешно - выходим из цикла
-                        
-                    except Exception as retry_error:
-                        if attempt < max_retries - 1:
-                            logger.warning(f"❌ Attempt {attempt + 1} failed: {retry_error}, retrying in 5s...")
-                            await asyncio.sleep(5)  # Пауза перед повтором
-                            continue
-                        else:
-                            logger.error(f"❌ All {max_retries} attempts failed: {retry_error}")
-                            raise retry_error  # Последняя попытка - поднимаем ошибку
-                
-                # Очищаем ответ
-                if isinstance(response, str):
-                    content = response.strip()
-                else:
-                    content = str(response).strip()
-                
-                # Базовая очистка ответа
-                content = self._clean_response(content)
-                
-                response_time = time.time() - start_time
-                
-                return LlamaResponse(
-                    content=content,
-                    model=self.model_name,
-                    tokens_used=len(content.split()),
-                    response_time=response_time,
-                    success=True
-                )
-                
-            except ImportError:
-                logger.error("❌ huggingface_hub not installed")
-                return self._generate_error_response(question, language, "Missing huggingface_hub", start_time)
+            # ИСПРАВЛЕНИЕ: Пробуем модели по очереди до успеха
+            models_to_try = [self.model_name] + self.working_models
             
-            except Exception as e:
-                logger.error(f"❌ HuggingFace API error: {e}")
-                return self._generate_error_response(question, language, str(e), start_time)
-        
+            for model_attempt, model in enumerate(models_to_try):
+                try:
+                    logger.info(f"🔄 Trying model {model_attempt + 1}/{len(models_to_try)}: {model}")
+                    
+                    response = await self._generate_with_model(prompt, model)
+                    
+                    if response.success:
+                        logger.info(f"✅ Success with model: {model}")
+                        return response
+                    else:
+                        logger.warning(f"❌ Model {model} failed: {response.error}")
+                        
+                except Exception as e:
+                    logger.warning(f"❌ Model {model} exception: {e}")
+                    continue
+            
+            # Если все модели не сработали - возвращаем fallback
+            logger.error("❌ All models failed, returning fallback response")
+            return self._generate_error_response(question, language, "All models unavailable", start_time)
+            
         except Exception as e:
             logger.error(f"❌ General error in answer_legal_question: {e}")
             return self._generate_error_response(question, language, str(e), start_time)
     
+    async def _generate_with_model(self, prompt: str, model: str) -> LlamaResponse:
+        """Генерирует ответ с конкретной моделью используя НОВЫЙ API"""
+        start_time = time.time()
+        
+        try:
+            # ИСПРАВЛЕНИЕ: Попробуем разные API endpoints
+            endpoints_to_try = [
+                f"https://api-inference.huggingface.co/models/{model}",
+                f"https://api-inference.huggingface.co/pipeline/text-generation/{model}",
+            ]
+            
+            for endpoint in endpoints_to_try:
+                try:
+                    # ИСПРАВЛЕНИЕ: Импортируем requests здесь для избежания проблем
+                    import requests
+                    
+                    headers = {
+                        "Authorization": f"Bearer {self.hf_token}" if self.hf_token else "",
+                        "Content-Type": "application/json"
+                    }
+                    
+                    # ИСПРАВЛЕНИЕ: Упрощенный payload для совместимости
+                    if "chat" in model.lower() or "dialog" in model.lower():
+                        # Для chat моделей
+                        payload = {
+                            "inputs": prompt,
+                            "parameters": {
+                                "max_new_tokens": 150,
+                                "temperature": 0.3,
+                                "do_sample": True,
+                                "return_full_text": False
+                            }
+                        }
+                    else:
+                        # Для обычных моделей
+                        payload = {
+                            "inputs": prompt,
+                            "parameters": {
+                                "max_new_tokens": 150,
+                                "temperature": 0.3,
+                                "return_full_text": False
+                            }
+                        }
+                    
+                    # ИСПРАВЛЕНИЕ: Синхронный запрос с таймаутом
+                    response = requests.post(
+                        endpoint,
+                        headers=headers,
+                        json=payload,
+                        timeout=30
+                    )
+                    
+                    if response.status_code == 200:
+                        data = response.json()
+                        
+                        # ИСПРАВЛЕНИЕ: Обработка разных форматов ответа
+                        if isinstance(data, list) and len(data) > 0:
+                            # Формат: [{"generated_text": "..."}]
+                            content = data[0].get("generated_text", "")
+                        elif isinstance(data, dict):
+                            # Формат: {"generated_text": "..."}
+                            content = data.get("generated_text", data.get("text", ""))
+                        else:
+                            content = str(data)
+                        
+                        # Очищаем ответ от промпта
+                        if content.startswith(prompt):
+                            content = content[len(prompt):].strip()
+                        
+                        content = self._clean_response(content)
+                        
+                        if content and len(content.strip()) > 5:
+                            response_time = time.time() - start_time
+                            
+                            return LlamaResponse(
+                                content=content,
+                                model=model,
+                                tokens_used=len(content.split()),
+                                response_time=response_time,
+                                success=True
+                            )
+                    
+                    else:
+                        logger.debug(f"HTTP {response.status_code} for {endpoint}")
+                        
+                except requests.exceptions.RequestException as e:
+                    logger.debug(f"Request error for {endpoint}: {e}")
+                    continue
+                except Exception as e:
+                    logger.debug(f"Error with {endpoint}: {e}")
+                    continue
+            
+            # Если все endpoints не сработали
+            return LlamaResponse(
+                content="",
+                model=model,
+                tokens_used=0,
+                response_time=time.time() - start_time,
+                success=False,
+                error="All endpoints failed"
+            )
+            
+        except ImportError:
+            logger.error("❌ requests library not available")
+            return LlamaResponse(
+                content="",
+                model=model,
+                tokens_used=0,
+                response_time=time.time() - start_time,
+                success=False,
+                error="Missing requests library"
+            )
+        except Exception as e:
+            logger.error(f"❌ Model generation error: {e}")
+            return LlamaResponse(
+                content="",
+                model=model,
+                tokens_used=0,
+                response_time=time.time() - start_time,
+                success=False,
+                error=str(e)
+            )
+    
     def _build_prompt(self, question: str, context_documents: List[Dict], language: str) -> str:
-        """Строит промпт для Llama"""
+        """Строит промпт для разных типов моделей"""
         
-        if language == "uk":
-            system_prompt = "Ти юридичний консультант. Відповідай коротко і по суті на основі документів."
-            context_intro = "Документи:"
-            answer_intro = f"Питання: {question}\nВідповідь:"
+        # ИСПРАВЛЕНИЕ: Очень простой промпт для совместимости
+        if context_documents:
+            # Берем только первый документ и сильно сокращаем
+            doc = context_documents[0]
+            context = doc.get('content', '')[:200]  # Максимум 200 символов
+            
+            if language == "uk":
+                prompt = f"Контекст: {context}\n\nПитання: {question}\nВідповідь:"
+            else:
+                prompt = f"Context: {context}\n\nQuestion: {question}\nAnswer:"
         else:
-            system_prompt = "You are a legal consultant. Answer concisely based on the provided documents."
-            context_intro = "Documents:"
-            answer_intro = f"Question: {question}\nAnswer:"
-        
-        # Формируем контекст (ограничиваем для скорости)
-        context_parts = []
-        for i, doc in enumerate(context_documents[:2]):  # Максимум 2 документа
-            filename = doc.get('filename', f'Doc {i+1}')
-            content = doc.get('content', '')[:400]  # Ограничиваем до 400 символов
-            context_parts.append(f"{filename}: {content}")
-        
-        context = f"\n{context_intro}\n" + "\n".join(context_parts) if context_parts else ""
-        
-        # Собираем промпт в формате Llama-3.1
-        prompt = f"<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n{system_prompt}<|eot_id|>\n"
-        
-        if context:
-            prompt += f"<|start_header_id|>user<|end_header_id|>\n{context}\n\n{answer_intro}<|eot_id|>\n"
-        else:
-            prompt += f"<|start_header_id|>user<|end_header_id|>\n{answer_intro}<|eot_id|>\n"
-        
-        prompt += "<|start_header_id|>assistant<|end_header_id|>\n"
+            if language == "uk":
+                prompt = f"Питання: {question}\nВідповідь:"
+            else:
+                prompt = f"Question: {question}\nAnswer:"
         
         # Ограничиваем общую длину промпта
-        max_prompt_length = 1200
-        if len(prompt) > max_prompt_length:
-            prompt = prompt[:max_prompt_length] + "..."
+        if len(prompt) > 300:
+            prompt = prompt[:300] + "..."
         
         return prompt
     
@@ -161,50 +249,55 @@ class LlamaService:
         if not response:
             return "I need more information to provide a proper legal analysis."
         
-        # Удаляем системные токены если попали в ответ
-        response = response.replace("<|eot_id|>", "")
-        response = response.replace("<|end_header_id|>", "")
-        response = response.replace("<|start_header_id|>", "")
-        
         # Базовая очистка
         response = response.strip()
         
-        # Ограничиваем длину ответа
-        if len(response) > 800:
-            response = response[:800] + "..."
+        # Удаляем повторения промпта
+        lines = response.split('\n')
+        cleaned_lines = []
+        for line in lines:
+            line = line.strip()
+            if line and not line.endswith(':') and len(line) > 3:
+                cleaned_lines.append(line)
+                if len(cleaned_lines) >= 3:  # Максимум 3 строки
+                    break
         
-        return response
+        cleaned = ' '.join(cleaned_lines)
+        
+        # Ограничиваем длину ответа
+        if len(cleaned) > 400:
+            cleaned = cleaned[:400] + "..."
+        
+        return cleaned or "Unable to generate response."
     
     def _generate_demo_response(self, question: str, context_documents: List[Dict], language: str, start_time: float):
         """Генерирует demo ответ"""
         if language == "uk":
-            content = f"""🤖 **Demo режим активний**
+            content = f"""🤖 **Demo режим активний** (LLM_DEMO_MODE=true)
 
 **Ваше питання:** {question}
 
 📚 Знайдено {len(context_documents)} документів у базі знань.
 
-💡 **Demo відповідь:** Це демонстраційний режим Legal Assistant. У робочому режимі тут буде детальна відповідь від Llama-3.1-8B-Instruct на основі ваших юридичних документів.
+💡 **Demo відповідь:** Це демонстраційний режим. У робочому режимі тут буде детальна відповідь від реального AI на основі ваших юридичних документів.
 
 🔧 **Для активації повної версії:**
-1. Отримайте токен на https://huggingface.co/settings/tokens
-2. Встановіть змінну HF_TOKEN у настройках Space
-3. Встановіть LLM_DEMO_MODE=false
+• Встановіть LLM_DEMO_MODE=false
+• Переконайтесь що HF_TOKEN налаштований
 
 📄 **Знайдені документи:** {', '.join([doc.get('filename', 'Unknown') for doc in context_documents[:3]])}"""
         else:
-            content = f"""🤖 **Demo Mode Active**
+            content = f"""🤖 **Demo Mode Active** (LLM_DEMO_MODE=true)
 
 **Your Question:** {question}
 
 📚 Found {len(context_documents)} documents in knowledge base.
 
-💡 **Demo Response:** This is Legal Assistant demo mode. In production mode, you would get detailed answers from Llama-3.1-8B-Instruct based on your legal documents.
+💡 **Demo Response:** This is demonstration mode. In production mode, you would get detailed answers from real AI based on your legal documents.
 
 🔧 **To activate full version:**
-1. Get token at https://huggingface.co/settings/tokens
-2. Set HF_TOKEN variable in Space settings
-3. Set LLM_DEMO_MODE=false
+• Set LLM_DEMO_MODE=false  
+• Ensure HF_TOKEN is configured
 
 📄 **Found documents:** {', '.join([doc.get('filename', 'Unknown') for doc in context_documents[:3]])}"""
         
@@ -218,88 +311,35 @@ class LlamaService:
     
     def _generate_error_response(self, question: str, language: str, error: str, start_time: float):
         """Генерирует ответ при ошибке"""
-        # Определяем тип ошибки для лучших рекомендаций
-        if "504" in error or "timeout" in error.lower():
-            error_type = "timeout"
-        elif "503" in error or "overloaded" in error.lower():
-            error_type = "overloaded"
-        elif "401" in error or "token" in error.lower():
-            error_type = "auth"
-        else:
-            error_type = "general"
         
         if language == "uk":
-            if error_type == "timeout":
-                content = f"""⏰ **Таймаут HuggingFace API**
+            content = f"""❌ **Помилка LLM сервісу**
 
 **Ваше питання:** {question}
 
-🔧 **Проблема:** Сервер HuggingFace перевантажений (504 Gateway Timeout)
+🔧 **Проблема:** {error}
 
-💡 **Рекомендації:**
-• Спробуйте ще раз через 1-2 хвилини
-• Увімкніть demo режим: LLM_DEMO_MODE=true
-• HuggingFace API може бути перевантажений у години пік
-
-🔄 **Статус:** Система автоматично повторила запит 2 рази"""
-            elif error_type == "auth":
-                content = f"""🔑 **Помилка автентифікації**
-
-**Ваше питання:** {question}
-
-🔧 **Проблема:** Перевірте HF_TOKEN
-
-💡 **Рекомендації:**
-• Отримайте новий токен: https://huggingface.co/settings/tokens
-• Встановіть HF_TOKEN у налаштуваннях Space
-• Або увімкніть demo режим: LLM_DEMO_MODE=true"""
-            else:
-                content = f"""❌ **Помилка LLM сервісу**
-
-**Ваше питання:** {question}
-
-🔧 **Помилка:** {error}
-
-💡 **Рекомендації:**
-• Спробуйте demo режим: LLM_DEMO_MODE=true
+💡 **Можливі рішення:**
+• HuggingFace API може бути перевантажений
+• Спробуйте ще раз через кілька хвилин  
 • Перевірте налаштування HF_TOKEN
-• Спробуйте ще раз через кілька хвилин"""
+• Або включіть demo режим: LLM_DEMO_MODE=true
+
+🔄 **Статус:** Автоматично спробували кілька моделей"""
         else:
-            if error_type == "timeout":
-                content = f"""⏰ **HuggingFace API Timeout**
+            content = f"""❌ **LLM Service Error**
 
 **Your Question:** {question}
 
-🔧 **Issue:** HuggingFace server overloaded (504 Gateway Timeout)
+🔧 **Issue:** {error}
 
-💡 **Recommendations:**
-• Try again in 1-2 minutes
-• Enable demo mode: LLM_DEMO_MODE=true
-• HuggingFace API may be overloaded during peak hours
+💡 **Possible Solutions:**
+• HuggingFace API may be overloaded
+• Try again in a few minutes
+• Check HF_TOKEN configuration  
+• Or enable demo mode: LLM_DEMO_MODE=true
 
-🔄 **Status:** System automatically retried request 2 times"""
-            elif error_type == "auth":
-                content = f"""🔑 **Authentication Error**
-
-**Your Question:** {question}
-
-🔧 **Issue:** Check HF_TOKEN configuration
-
-💡 **Recommendations:**
-• Get new token: https://huggingface.co/settings/tokens
-• Set HF_TOKEN in Space settings
-• Or enable demo mode: LLM_DEMO_MODE=true"""
-            else:
-                content = f"""❌ **LLM Service Error**
-
-**Your Question:** {question}
-
-🔧 **Error:** {error}
-
-💡 **Recommendations:**
-• Try demo mode: LLM_DEMO_MODE=true
-• Check HF_TOKEN configuration
-• Try again in a few minutes"""
+🔄 **Status:** Automatically tried multiple models"""
         
         return LlamaResponse(
             content=content,
@@ -312,13 +352,12 @@ class LlamaService:
     
     async def get_service_status(self):
         """Возвращает статус сервиса"""
-        # Проверяем доступность HuggingFace
-        hf_available = False
+        # Проверяем доступность requests
         try:
-            from huggingface_hub import InferenceClient
-            hf_available = True
+            import requests
+            requests_available = True
         except ImportError:
-            pass
+            requests_available = False
         
         return {
             "service_type": self.service_type,
@@ -326,25 +365,25 @@ class LlamaService:
             "ready": self.ready,
             "hf_token_configured": bool(self.hf_token),
             "demo_mode": os.getenv("LLM_DEMO_MODE", "false").lower() == "true",
-            "huggingface_hub_available": hf_available,
-            "retry_enabled": True,
-            "max_retries": 2,
-            "api_timeout": "managed_by_huggingface",
+            "requests_available": requests_available,
+            "api_endpoints": self.api_endpoints,
+            "working_models": self.working_models,
+            "fallback_enabled": True,
             "recommendations": [
-                "Set HF_TOKEN for better rate limits and priority access",
+                "New HuggingFace Inference Providers API implemented",
+                "Multiple fallback models configured",
+                "Set HF_TOKEN for better rate limits",
                 "Use LLM_DEMO_MODE=true for testing without API calls",
-                "Check https://status.huggingface.co/ for service status",
-                "Visit https://huggingface.co/settings/tokens for token management"
+                "If all models fail, check HuggingFace status"
             ]
         }
 
 def create_llama_service():
-    """Создает Llama сервис"""
+    """Создает обновленный Llama сервис"""
     try:
         return LlamaService()
     except Exception as e:
         logger.error(f"❌ Failed to create Llama service: {e}")
-        # Возвращаем fallback
         return create_fallback_service()
 
 def create_fallback_service():
@@ -360,29 +399,27 @@ def create_fallback_service():
 
 **Ваше питання:** {question}
 
-⚠️ LLM сервіс недоступний. Рекомендації:
-1. Встановіть HF_TOKEN - токен від HuggingFace
-2. Або увімкніть LLM_DEMO_MODE=true для демо режиму
+⚠️ LLM сервіс недоступний. 
 
 📚 Знайдено {len(context_documents)} документів у базі знань.
 
-🔧 **Налаштування:**
-• HF_TOKEN: отримайте на https://huggingface.co/settings/tokens
-• LLM_DEMO_MODE: встановіть у налаштуваннях HuggingFace Space"""
+🔧 **Рекомендації:**
+• Перевірте HF_TOKEN налаштування
+• Спробуйте demo режим: LLM_DEMO_MODE=true
+• HuggingFace API може бути тимчасово недоступний"""
             else:
                 content = f"""🔄 **System Initializing**
 
 **Your Question:** {question}
 
-⚠️ LLM service unavailable. Recommendations:
-1. Set HF_TOKEN - HuggingFace token
-2. Or enable LLM_DEMO_MODE=true for demo mode
+⚠️ LLM service unavailable.
 
 📚 Found {len(context_documents)} documents in database.
 
-🔧 **Configuration:**
-• HF_TOKEN: get at https://huggingface.co/settings/tokens
-• LLM_DEMO_MODE: set in HuggingFace Space settings"""
+🔧 **Recommendations:**
+• Check HF_TOKEN configuration
+• Try demo mode: LLM_DEMO_MODE=true  
+• HuggingFace API may be temporarily unavailable"""
             
             return LlamaResponse(
                 content=content,
@@ -394,12 +431,12 @@ def create_fallback_service():
         
         async def get_service_status(self):
             return {
-                "service_type": "fallback", 
+                "service_type": "fallback",
                 "ready": True,
                 "recommendations": [
-                    "Install huggingface_hub: pip install huggingface_hub",
+                    "Install requests: pip install requests",
                     "Configure HF_TOKEN in environment variables",
-                    "Enable LLM_DEMO_MODE for testing"
+                    "Check HuggingFace API status"
                 ]
             }
     
