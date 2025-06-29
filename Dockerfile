@@ -1,4 +1,4 @@
-# Dockerfile для минимальной RAG системы - ОПТИМИЗИРОВАННАЯ ВЕРСИЯ
+# Dockerfile для минимальной RAG системы - ИСПРАВЛЕННАЯ ВЕРСИЯ
 # Single-stage build: Python + React статика + минимальные зависимости
 # Целевое потребление: <1GB RAM
 
@@ -53,15 +53,20 @@ COPY --chown=user backend/ .
 RUN mkdir -p logs chromadb_data uploads temp .cache
 
 # ====================================
-# REACT СТАТИКА (УПРОЩЕННО)
+# REACT СТАТИКА (ИСПРАВЛЕННАЯ ВЕРСИЯ)
 # ====================================
 
-# Копируем React build если есть, иначе создаем заглушку
-COPY --chown=user frontend/build ./static 2>/dev/null || \
-    (mkdir -p static && echo '<!DOCTYPE html><html><head><title>Minimal RAG</title></head><body><h1>Minimal RAG API</h1><p>API Documentation: <a href="/docs">/docs</a></p></body></html>' > static/index.html)
+# Создаем директорию для статики
+RUN mkdir -p static
+
+# Пытаемся скопировать React build или создаем заглушку
+COPY --chown=user frontend/build ./static 2>/dev/null || true
+RUN if [ ! -f static/index.html ]; then \
+    echo '<!DOCTYPE html><html><head><title>Minimal RAG</title></head><body><h1>Minimal RAG API</h1><p>API Documentation: <a href="/docs">/docs</a></p></body></html>' > static/index.html; \
+    fi
 
 # Альтернативный путь для совместимости
-RUN cp -r static frontend/build 2>/dev/null || mkdir -p frontend/build
+RUN mkdir -p frontend/build && cp -r static/* frontend/build/ 2>/dev/null || true
 
 # ====================================
 # НАСТРОЙКА ПЕРЕМЕННЫХ ОКРУЖЕНИЯ
