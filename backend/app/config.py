@@ -35,14 +35,13 @@ class Settings:
     # Что вы видите в HF Spaces settings имеет приоритет
     
     # Проверенные рабочие модели (fallback если не задано в ENV)
-    _DEFAULT_PRIMARY_MODEL = "microsoft/phi-2"  # Лучшее качество
-    _DEFAULT_FAST_MODEL = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"  # Быстрая модель
+    _DEFAULT_PRIMARY_MODEL = "google/flan-t5-base"  # Надежная
+    _DEFAULT_FAST_MODEL = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
     _BACKUP_MODELS = [
-        "google/flan-t5-base",           # Самая стабильная
-        "microsoft/DialoGPT-small",      # Меньше medium, больше шансов работать
-        "distilgpt2",                    # Простая и надежная
-        "gpt2"                           # Последний fallback
-    ]
+    "meta-llama/Llama-2-7b-chat-hf",
+    "distilgpt2", 
+    "gpt2"
+]
     
     # Приоритет: ENV -> Код
     @property
