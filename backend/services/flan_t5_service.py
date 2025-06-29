@@ -1,7 +1,7 @@
-# backend/services/flan_t5_service.py - ИСПРАВЛЕННЫЙ БЕЗ ACCELERATE
+# backend/services/flan_t5_service.py - ОПТИМИЗИРОВАННАЯ ВЕРСИЯ
 """
-Минимальный сервис для FLAN-T5 Small модели
-ИСПРАВЛЕНИЕ: Убран device_map для избежания accelerate зависимости
+Оптимизированный сервис для FLAN-T5 Small модели
+ИСПРАВЛЕНИЯ: Улучшенные промпты, настройки генерации, скорость
 """
 
 import logging
@@ -23,7 +23,7 @@ class T5Response:
     error: Optional[str] = None
 
 class FlanT5Service:
-    """Упрощенный сервис для FLAN-T5 Small БЕЗ accelerate"""
+    """Оптимизированный сервис для FLAN-T5 Small"""
     
     def __init__(self):
         self.service_type = "flan_t5"
@@ -37,7 +37,7 @@ class FlanT5Service:
         self._load_model()
     
     def _load_model(self):
-        """Загружает модель FLAN-T5 без accelerate"""
+        """Загружает модель FLAN-T5 с оптимизацией"""
         try:
             from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
             
@@ -49,17 +49,20 @@ class FlanT5Service:
                 token=self.hf_token if self.hf_token else None
             )
             
-            # ИСПРАВЛЕНИЕ: Загружаем модель БЕЗ device_map для избежания accelerate
+            # Загружаем модель с оптимизацией
             self.model = AutoModelForSeq2SeqLM.from_pretrained(
                 self.model_name,
                 token=self.hf_token if self.hf_token else None,
-                torch_dtype="auto"
-                # Убрали device_map="auto" чтобы избежать accelerate зависимость
+                torch_dtype="auto",
+                low_cpu_mem_usage=True  # Экономия памяти
             )
             
-            # Перемещаем модель на правильное устройство вручную
+            # Перемещаем модель на правильное устройство
             device = self._get_device()
             self.model = self.model.to(device)
+            
+            # Оптимизируем модель для inference
+            self.model.eval()  # Переводим в режим инференса
             
             self.ready = True
             logger.info(f"✅ FLAN-T5 model loaded successfully on {device}")
@@ -69,7 +72,7 @@ class FlanT5Service:
             self.ready = False
     
     def _get_device(self):
-        """Определяет устройство без accelerate"""
+        """Определяет устройство"""
         try:
             import torch
             if torch.cuda.is_available():
@@ -97,17 +100,17 @@ class FlanT5Service:
                     question, language, "Model not loaded", start_time
                 )
             
-            # Строим промпт для T5
-            prompt = self._build_t5_prompt(question, context_documents, language)
+            # Строим оптимизированный промпт для T5
+            prompt = self._build_optimized_t5_prompt(question, context_documents, language)
             
             # Генерируем ответ
             response = await self._generate_with_t5(prompt)
             
-            if response.success:
+            if response.success and len(response.content.strip()) > 10:  # Проверяем длину ответа
                 logger.info(f"✅ Generated response: {len(response.content)} chars")
                 return response
             else:
-                logger.warning(f"❌ Generation failed: {response.error}")
+                logger.warning(f"❌ Generation failed or too short: {response.error or 'Short response'}")
                 return self._generate_fallback_response(question, context_documents, language, start_time)
                 
         except Exception as e:
@@ -115,18 +118,18 @@ class FlanT5Service:
             return self._generate_error_response(question, language, str(e), start_time)
     
     async def _generate_with_t5(self, prompt: str) -> T5Response:
-        """Генерирует ответ с FLAN-T5"""
+        """Генерирует ответ с FLAN-T5 оптимизированно"""
         start_time = time.time()
         
         try:
             # Выполняем в executor для избежания блокировки
             result = await asyncio.get_event_loop().run_in_executor(
-                None, self._generate_sync, prompt
+                None, self._generate_sync_optimized, prompt
             )
             
             response_time = time.time() - start_time
             
-            if result:
+            if result and len(result.strip()) > 5:
                 return T5Response(
                     content=result,
                     model=self.model_name,
@@ -141,7 +144,7 @@ class FlanT5Service:
                     tokens_used=0,
                     response_time=response_time,
                     success=False,
-                    error="Empty generation result"
+                    error="Generated response too short or empty"
                 )
                 
         except Exception as e:
@@ -154,43 +157,61 @@ class FlanT5Service:
                 error=str(e)
             )
     
-    def _generate_sync(self, prompt: str) -> str:
-        """Синхронная генерация с T5"""
+    def _generate_sync_optimized(self, prompt: str) -> str:
+        """ОПТИМИЗИРОВАННАЯ синхронная генерация с T5"""
         try:
             import torch
             
             # Получаем устройство модели
             device = next(self.model.parameters()).device
             
-            # Токенизация
+            # Оптимизированная токенизация
             inputs = self.tokenizer(
                 prompt,
                 return_tensors="pt",
-                max_length=512,
+                max_length=400,  # Уменьшено для скорости
                 truncation=True,
                 padding=True
             )
             
-            # Перемещаем inputs на то же устройство что и модель
+            # Перемещаем inputs на устройство модели
             inputs = {k: v.to(device) for k, v in inputs.items()}
             
-            # Генерация
-            max_new_tokens = int(os.getenv("LLM_MAX_TOKENS", "150"))
+            # ОПТИМИЗИРОВАННЫЕ параметры генерации
+            max_new_tokens = int(os.getenv("LLM_MAX_TOKENS", "80"))  # Увеличено с 150
+            temperature = float(os.getenv("LLM_TEMPERATURE", "0.7"))  # Увеличено для разнообразия
+            
+            generation_kwargs = {
+                "max_new_tokens": max_new_tokens,
+                "min_length": 20,  # КРИТИЧНО: Минимальная длина ответа
+                "temperature": temperature,
+                "do_sample": True,
+                "top_p": 0.9,  # Добавлено для лучшего качества
+                "top_k": 50,   # Добавлено для разнообразия
+                "no_repeat_ngram_size": 3,  # Избегаем повторений
+                "pad_token_id": self.tokenizer.eos_token_id,
+                "eos_token_id": self.tokenizer.eos_token_id,
+                "early_stopping": True,  # Ускоряем генерацию
+                "num_beams": 1,  # Greedy search для скорости
+            }
+            
+            logger.debug(f"🔧 Generation params: max_tokens={max_new_tokens}, temp={temperature}")
             
             with torch.no_grad():
                 outputs = self.model.generate(
                     **inputs,
-                    max_new_tokens=max_new_tokens,
-                    temperature=float(os.getenv("LLM_TEMPERATURE", "0.3")),
-                    do_sample=True,
-                    pad_token_id=self.tokenizer.eos_token_id
+                    **generation_kwargs
                 )
             
-            # Декодирование
-            response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+            # Декодирование - берем только новые токены
+            input_length = inputs['input_ids'].shape[1]
+            generated_tokens = outputs[0][input_length:]
+            response = self.tokenizer.decode(generated_tokens, skip_special_tokens=True)
             
-            # Очищаем ответ от промпта
-            response = self._clean_t5_response(response, prompt)
+            # Очищаем ответ
+            response = self._clean_t5_response_optimized(response)
+            
+            logger.debug(f"🎯 Raw response length: {len(response)} chars")
             
             return response
             
@@ -198,60 +219,49 @@ class FlanT5Service:
             logger.error(f"Sync generation error: {e}")
             return ""
     
-    def _build_t5_prompt(self, question: str, context_documents: List[Dict], language: str) -> str:
-        """Строит промпт для FLAN-T5 в text2text формате"""
+    def _build_optimized_t5_prompt(self, question: str, context_documents: List[Dict], language: str) -> str:
+        """ОПТИМИЗИРОВАННЫЙ промпт для FLAN-T5"""
         
-        # Извлекаем контекст
-        context = ""
-        if context_documents:
-            # Берем только первый документ для экономии памяти
-            doc = context_documents[0]
-            content = doc.get('content', '')
-            # Обрезаем контекст для T5 Small
-            max_context = int(os.getenv("CONTEXT_TRUNCATE_LENGTH", "300"))
-            context = content[:max_context] + "..." if len(content) > max_context else content
-        
-        # Формируем промпт в зависимости от языка
+        # Более простые и эффективные промпты для T5
         if language == "uk":
-            if context:
-                prompt = f"Контекст: {context}\n\nПитання: {question}\n\nДайте юридичну відповідь на основі контексту:"
+            if context_documents:
+                doc = context_documents[0]
+                content = doc.get('content', '')[:200]  # Короче контекст
+                prompt = f"На основі тексту: {content}\n\nВідповідь на питання '{question}':"
             else:
-                prompt = f"Питання: {question}\n\nДайте коротку юридичну відповідь:"
+                prompt = f"Дайте коротку відповідь на питання: {question}"
         else:
-            if context:
-                prompt = f"Context: {context}\n\nQuestion: {question}\n\nProvide a legal answer based on the context:"
+            if context_documents:
+                doc = context_documents[0]
+                content = doc.get('content', '')[:200]  # Короче контекст
+                prompt = f"Based on the text: {content}\n\nAnswer the question '{question}':"
             else:
-                prompt = f"Question: {question}\n\nProvide a brief legal answer:"
+                prompt = f"Provide a brief answer to the question: {question}"
         
         return prompt
     
-    def _clean_t5_response(self, response: str, prompt: str) -> str:
-        """Очищает ответ T5 от артефактов"""
+    def _clean_t5_response_optimized(self, response: str) -> str:
+        """ОПТИМИЗИРОВАННАЯ очистка ответа T5"""
         if not response:
             return "I need more information to provide a proper legal analysis."
         
-        # Убираем промпт из ответа если он там есть
-        if prompt in response:
-            response = response.replace(prompt, "").strip()
+        # Простая очистка
+        response = response.strip()
         
-        # Убираем повторяющиеся фразы
-        lines = response.split('\n')
-        cleaned_lines = []
-        for line in lines:
-            line = line.strip()
-            if line and len(line) > 3:
-                cleaned_lines.append(line)
-                if len(cleaned_lines) >= 3:  # Ограничиваем длину ответа
-                    break
+        # Убираем очень короткие ответы
+        if len(response) < 10:
+            return "I need more information to provide a proper legal analysis."
         
-        cleaned = ' '.join(cleaned_lines)
+        # Ограничиваем длину разумными пределами
+        if len(response) > 300:
+            # Ищем последнее предложение
+            sentences = response.split('.')
+            if len(sentences) > 1:
+                response = '.'.join(sentences[:-1]) + '.'
+            else:
+                response = response[:300] + "..."
         
-        # Ограничиваем длину
-        max_length = 400
-        if len(cleaned) > max_length:
-            cleaned = cleaned[:max_length] + "..."
-        
-        return cleaned or "Unable to generate a proper response."
+        return response
     
     def _generate_fallback_response(self, question: str, context_documents: List[Dict], 
                                   language: str, start_time: float):
@@ -273,7 +283,7 @@ class FlanT5Service:
 📚 {context_info}
 📄 **Джерела:** {sources}
 
-⚠️ AI відповідь тимчасово недоступна, але знайдено релевантні документи для ручного аналізу."""
+⚠️ AI відповідь тимчасово недоступна або занадто коротка. Знайдено релевантні документи для ручного аналізу."""
         else:
             content = f"""🔍 **Search Results**
 
@@ -282,7 +292,7 @@ class FlanT5Service:
 📚 {context_info}
 📄 **Sources:** {sources}
 
-⚠️ AI response temporarily unavailable, but found relevant documents for manual analysis."""
+⚠️ AI response temporarily unavailable or too short. Found relevant documents for manual analysis."""
         
         return T5Response(
             content=content,
@@ -336,7 +346,13 @@ class FlanT5Service:
             "hf_token_configured": bool(self.hf_token),
             "cuda_available": self._has_cuda(),
             "device": self._get_device(),
-            "memory_usage": "~400 MB"
+            "memory_usage": "~400 MB",
+            "optimization": {
+                "eval_mode": True,
+                "low_cpu_mem_usage": True,
+                "optimized_prompts": True,
+                "min_response_length": 20
+            }
         }
 
 def create_flan_t5_service():
@@ -356,7 +372,23 @@ def create_fallback_service():
             self.ready = True
         
         async def answer_legal_question(self, question: str, context_documents: list, language: str = "en"):
-            content = f"FLAN-T5 service unavailable. Question: {question}. Found {len(context_documents)} documents."
+            if language == "uk":
+                content = f"""📚 **FLAN-T5 сервіс недоступний**
+
+**Питання:** {question}
+
+Знайдено документів: {len(context_documents)}
+
+🔧 AI тимчасово недоступний, але пошук документів працює."""
+            else:
+                content = f"""📚 **FLAN-T5 Service Unavailable**
+
+**Question:** {question}
+
+Documents found: {len(context_documents)}
+
+🔧 AI temporarily unavailable, but document search is working."""
+            
             return T5Response(
                 content=content,
                 model="fallback",
