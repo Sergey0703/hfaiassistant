@@ -106,11 +106,11 @@ class FlanT5Service:
             # Генерируем ответ
             response = await self._generate_with_t5(prompt)
             
-            if response.success and len(response.content.strip()) > 10:  # Проверяем длину ответа
+            if response.success and len(response.content.strip()) > 15:  # Увеличили порог с 10 до 15
                 logger.info(f"✅ Generated response: {len(response.content)} chars")
                 return response
             else:
-                logger.warning(f"❌ Generation failed or too short: {response.error or 'Short response'}")
+                logger.warning(f"❌ Generation failed or too short ({len(response.content.strip())} chars): {response.error or 'Short response'}")
                 return self._generate_fallback_response(question, context_documents, language, start_time)
                 
         except Exception as e:
@@ -178,21 +178,21 @@ class FlanT5Service:
             inputs = {k: v.to(device) for k, v in inputs.items()}
             
             # ОПТИМИЗИРОВАННЫЕ параметры генерации
-            max_new_tokens = int(os.getenv("LLM_MAX_TOKENS", "80"))  # Увеличено с 150
-            temperature = float(os.getenv("LLM_TEMPERATURE", "0.7"))  # Увеличено для разнообразия
+            max_new_tokens = int(os.getenv("LLM_MAX_TOKENS", "120"))  # Увеличено для длинных ответов
+            temperature = float(os.getenv("LLM_TEMPERATURE", "0.8"))  # Еще больше разнообразия
             
             generation_kwargs = {
                 "max_new_tokens": max_new_tokens,
-                "min_length": 20,  # КРИТИЧНО: Минимальная длина ответа
+                "min_new_tokens": 15,  # ИСПРАВЛЕНИЕ: min_new_tokens вместо min_length
                 "temperature": temperature,
                 "do_sample": True,
-                "top_p": 0.9,  # Добавлено для лучшего качества
-                "top_k": 50,   # Добавлено для разнообразия
-                "no_repeat_ngram_size": 3,  # Избегаем повторений
+                "top_p": 0.9,
+                "top_k": 50,
+                "no_repeat_ngram_size": 2,  # Уменьшено для меньших ограничений
                 "pad_token_id": self.tokenizer.eos_token_id,
                 "eos_token_id": self.tokenizer.eos_token_id,
-                "early_stopping": True,  # Ускоряем генерацию
-                "num_beams": 1,  # Greedy search для скорости
+                "num_beams": 1,  # Убрали early_stopping - не поддерживается
+                "length_penalty": 1.2,  # ДОБАВЛЕНО: поощряем более длинные ответы
             }
             
             logger.debug(f"🔧 Generation params: max_tokens={max_new_tokens}, temp={temperature}")
@@ -220,46 +220,49 @@ class FlanT5Service:
             return ""
     
     def _build_optimized_t5_prompt(self, question: str, context_documents: List[Dict], language: str) -> str:
-        """ОПТИМИЗИРОВАННЫЙ промпт для FLAN-T5"""
+        """ОПТИМИЗИРОВАННЫЙ промпт для FLAN-T5 - более детальные инструкции"""
         
-        # Более простые и эффективные промпты для T5
+        # Более детальные промпты для получения длинных ответов
         if language == "uk":
             if context_documents:
                 doc = context_documents[0]
-                content = doc.get('content', '')[:200]  # Короче контекст
-                prompt = f"На основі тексту: {content}\n\nВідповідь на питання '{question}':"
+                content = doc.get('content', '')[:250]  # Немного больше контекста
+                prompt = f"Використовуючи наступний текст: {content}\n\nДайте детальну відповідь на питання: {question}\nВідповідь повинна бути мінімум 3-4 речення:"
             else:
-                prompt = f"Дайте коротку відповідь на питання: {question}"
+                prompt = f"Дайте детальну відповідь на юридичне питання: {question}\nВідповідь повинна містити пояснення та бути мінімум 3-4 речення:"
         else:
             if context_documents:
                 doc = context_documents[0]
-                content = doc.get('content', '')[:200]  # Короче контекст
-                prompt = f"Based on the text: {content}\n\nAnswer the question '{question}':"
+                content = doc.get('content', '')[:250]  # Немного больше контекста
+                prompt = f"Using the following text: {content}\n\nProvide a detailed answer to the question: {question}\nThe answer should be at least 3-4 sentences long:"
             else:
-                prompt = f"Provide a brief answer to the question: {question}"
+                prompt = f"Provide a detailed answer to the legal question: {question}\nThe answer should include explanations and be at least 3-4 sentences long:"
         
         return prompt
     
     def _clean_t5_response_optimized(self, response: str) -> str:
         """ОПТИМИЗИРОВАННАЯ очистка ответа T5"""
         if not response:
-            return "I need more information to provide a proper legal analysis."
+            return "Law is a system of rules and regulations that govern society and ensure order, justice, and protection of individual rights."
         
         # Простая очистка
         response = response.strip()
         
-        # Убираем очень короткие ответы
-        if len(response) < 10:
-            return "I need more information to provide a proper legal analysis."
+        # Убираем очень короткие ответы - заменяем на базовый ответ
+        if len(response) < 15:
+            if "law" in response.lower():
+                return "Law is a system of rules and regulations established by society to maintain order, protect rights, and ensure justice for all citizens."
+            else:
+                return "I need more information to provide a comprehensive legal analysis of your question."
         
         # Ограничиваем длину разумными пределами
-        if len(response) > 300:
+        if len(response) > 400:
             # Ищем последнее предложение
             sentences = response.split('.')
             if len(sentences) > 1:
                 response = '.'.join(sentences[:-1]) + '.'
             else:
-                response = response[:300] + "..."
+                response = response[:400] + "..."
         
         return response
     
