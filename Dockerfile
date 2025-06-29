@@ -53,63 +53,61 @@ COPY --chown=user backend/ .
 RUN mkdir -p logs chromadb_data uploads temp .cache
 
 # ====================================
-# REACT СТАТИКА (УПРОЩЕННАЯ БЕЗОПАСНАЯ ВЕРСИЯ)
+# REACT СТАТИКА (ВОССТАНОВЛЕНА ПОДДЕРЖКА ВАШЕГО FRONTEND)
 # ====================================
 
 # Создаем директории для статических файлов
 RUN mkdir -p static frontend/build
 
-# Создаем заглушку HTML файла для API-only режима
-RUN echo '<!DOCTYPE html>\
+# Сначала создаем временную заглушку (будет перезаписана вашим React build)
+RUN echo '<!DOCTYPE html><html><head><title>Loading...</title></head><body><h1>Loading React App...</h1></body></html>' > static/index.html
+
+# Копируем ваш React build если он существует
+# Используем отдельные команды для безопасности
+RUN echo "Checking for React build..."
+COPY --chown=user frontend/ ./frontend_source/
+RUN if [ -d "frontend_source/build" ] && [ -f "frontend_source/build/index.html" ]; then \
+    echo "✅ React build found - installing your frontend..."; \
+    cp -r frontend_source/build/* static/; \
+    cp -r frontend_source/build/* frontend/build/; \
+    echo "✅ Your React frontend installed successfully"; \
+    else \
+    echo "⚠️ No React build found in frontend/build/"; \
+    echo "📝 To use your React frontend:"; \
+    echo "   1. cd frontend"; \
+    echo "   2. npm install"; \
+    echo "   3. npm run build"; \
+    echo "   4. Rebuild Docker image"; \
+    echo "⚙️ Using API-only mode for now"; \
+    echo '<!DOCTYPE html>\
 <html>\
 <head>\
-    <title>Minimal RAG System</title>\
+    <title>Legal Assistant API</title>\
     <meta charset="utf-8">\
     <meta name="viewport" content="width=device-width, initial-scale=1">\
-    <style>\
-        body { font-family: Arial, sans-serif; max-width: 800px; margin: 50px auto; padding: 20px; }\
-        h1 { color: #2c3e50; }\
-        a { color: #3498db; text-decoration: none; }\
-        a:hover { text-decoration: underline; }\
-        .links { background: #f8f9fa; padding: 20px; border-radius: 5px; margin: 20px 0; }\
-        .status { color: #7f8c8d; font-style: italic; }\
-    </style>\
 </head>\
 <body>\
-    <h1>🏛️ Minimal RAG System</h1>\
-    <p>Legal Assistant API with FLAN-T5 Small and Sentence Transformers</p>\
-    \
-    <div class="links">\
-        <h3>🔗 Available Endpoints:</h3>\
-        <ul>\
-            <li><a href="/docs">📖 Interactive API Documentation</a></li>\
-            <li><a href="/health">💚 System Health Check</a></li>\
-            <li><a href="/model-status">🤖 Model Status</a></li>\
-            <li><a href="/api-status">⚙️ API Status</a></li>\
-        </ul>\
-    </div>\
-    \
-    <div class="links">\
-        <h3>🚀 Quick Start:</h3>\
-        <ul>\
-            <li>POST <code>/api/user/chat</code> - Chat with legal assistant</li>\
-            <li>POST <code>/api/user/search</code> - Search documents</li>\
-            <li>GET <code>/api/admin/documents</code> - Manage documents</li>\
-        </ul>\
-    </div>\
-    \
-    <hr>\
-    <p class="status">React frontend not built. API-only mode active.</p>\
-    <p class="status">Memory target: &lt;1GB RAM | Models: FLAN-T5 Small + all-MiniLM-L6-v2</p>\
+    <h1>🏛️ Legal Assistant API</h1>\
+    <p><strong>Your React frontend will appear here after building</strong></p>\
+    <h3>📖 API Documentation:</h3>\
+    <ul>\
+        <li><a href="/docs">Interactive API Docs</a></li>\
+        <li><a href="/health">Health Check</a></li>\
+    </ul>\
+    <h3>🔧 To enable your React frontend:</h3>\
+    <ol>\
+        <li>cd frontend</li>\
+        <li>npm install</li>\
+        <li>npm run build</li>\
+        <li>Rebuild Docker image</li>\
+    </ol>\
 </body>\
-</html>' > static/index.html
+</html>' > static/index.html; \
+    cp static/index.html frontend/build/index.html; \
+    fi
 
-# Копируем в оба места для совместимости
-RUN cp static/index.html frontend/build/index.html
-
-# Примечание: Если вы хотите использовать React frontend,
-# соберите его командой 'npm run build' в папке frontend/
-# и пересоберите Docker образ
+# Очищаем временные файлы
+RUN rm -rf frontend_source
 
 # ====================================
 # НАСТРОЙКА ПЕРЕМЕННЫХ ОКРУЖЕНИЯ
