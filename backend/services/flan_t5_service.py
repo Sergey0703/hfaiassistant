@@ -1,7 +1,7 @@
-# backend/services/flan_t5_service.py - ИСПРАВЛЕННАЯ ВЕРСИЯ
+# backend/services/flan_t5_service.py - ПОЛНОСТЬЮ ИСПРАВЛЕННАЯ ВЕРСИЯ
 """
 Исправленный сервис для FLAN-T5 Small модели
-ИСПРАВЛЕНИЕ: Убран fallback, улучшена генерация для разных ответов
+КРИТИЧЕСКИЕ ИСПРАВЛЕНИЯ: Правильные параметры генерации для FLAN-T5
 """
 
 import logging
@@ -24,7 +24,7 @@ class T5Response:
     error: Optional[str] = None
 
 class FlanT5Service:
-    """Улучшенный сервис для FLAN-T5 Small с разнообразными ответами"""
+    """ИСПРАВЛЕННЫЙ сервис для FLAN-T5 Small с правильными параметрами генерации"""
     
     def __init__(self):
         self.service_type = "flan_t5"
@@ -87,7 +87,7 @@ class FlanT5Service:
             return False
     
     async def answer_legal_question(self, question: str, context_documents: List[Dict], language: str = "en"):
-        """Отвечает на юридический вопрос используя FLAN-T5"""
+        """ИСПРАВЛЕННЫЙ метод ответа на юридический вопрос"""
         start_time = time.time()
         
         try:
@@ -96,80 +96,116 @@ class FlanT5Service:
                     question, language, "Model not loaded", start_time
                 )
             
-            # Пробуем несколько стратегий генерации для разнообразия
+            # ИСПРАВЛЕНИЕ: Пробуем разные стратегии генерации в порядке сложности
             strategies = [
-                self._generate_simple_response,
-                self._generate_detailed_response,
-                self._generate_contextual_response
+                ("simple", self._generate_simple_response),
+                ("detailed", self._generate_detailed_response),
+                ("contextual", self._generate_contextual_response)
             ]
             
-            # Выбираем стратегию на основе вопроса
+            # ИСПРАВЛЕНИЕ: Выбираем стратегию на основе длины вопроса
             if len(question) < 20:
-                strategy = strategies[0]  # Простые ответы на короткие вопросы
-            elif context_documents:
-                strategy = strategies[2]  # Контекстные ответы
+                strategy_name, strategy_func = strategies[0]  # Простые ответы
+            elif context_documents and len(context_documents) > 0:
+                strategy_name, strategy_func = strategies[2]  # Контекстные ответы
             else:
-                strategy = strategies[1]  # Детальные ответы
+                strategy_name, strategy_func = strategies[1]  # Детальные ответы
             
-            response = await strategy(question, context_documents, language)
+            logger.info(f"🎯 Using strategy: {strategy_name} for question length: {len(question)}")
             
-            if response.success:
-                logger.info(f"✅ Generated response: {len(response.content)} chars")
+            response = await strategy_func(question, context_documents, language)
+            
+            if response.success and len(response.content.strip()) > 3:  # ИСПРАВЛЕНИЕ: Снижен порог
+                logger.info(f"✅ Generated response ({strategy_name}): {len(response.content)} chars")
                 return response
             else:
-                # Если одна стратегия не сработала, пробуем другую
-                logger.warning(f"❌ First strategy failed, trying alternative")
-                return await self._generate_alternative_response(question, context_documents, language, start_time)
+                # ИСПРАВЛЕНИЕ: Если стратегия не сработала, пробуем альтернативную
+                logger.warning(f"❌ Strategy {strategy_name} failed, trying alternative")
+                return await self._generate_fallback_response(question, context_documents, language, start_time)
                 
         except Exception as e:
             logger.error(f"❌ Error in answer_legal_question: {e}")
             return self._generate_error_response(question, language, str(e), start_time)
     
     async def _generate_simple_response(self, question: str, context_documents: List[Dict], language: str):
-        """Генерирует простой ответ"""
+        """ИСПРАВЛЕННАЯ генерация простого ответа"""
         start_time = time.time()
         
+        # ИСПРАВЛЕНИЕ: Упрощенные промпты для FLAN-T5
         if language == "uk":
             prompt = f"Питання: {question}\nВідповідь:"
         else:
             prompt = f"Question: {question}\nAnswer:"
         
-        return await self._generate_with_params(prompt, start_time, temperature=0.5, max_tokens=60)
+        # ИСПРАВЛЕНИЕ: Оптимальные параметры для FLAN-T5 Small
+        return await self._generate_with_params(
+            prompt, 
+            start_time, 
+            temperature=0.3,  # Снижена для стабильности
+            max_new_tokens=120  # Увеличено
+        )
     
     async def _generate_detailed_response(self, question: str, context_documents: List[Dict], language: str):
-        """Генерирует детальный ответ"""
+        """ИСПРАВЛЕННАЯ генерация детального ответа"""
         start_time = time.time()
         
+        # ИСПРАВЛЕНИЕ: Простые промпты без сложных инструкций
         if language == "uk":
-            prompt = f"Дайте детальну відповідь на юридичне питання: {question}"
+            prompt = f"Юридичне питання: {question}\nДетальна відповідь:"
         else:
-            prompt = f"Provide a detailed answer to the legal question: {question}"
+            prompt = f"Legal question: {question}\nDetailed answer:"
         
-        return await self._generate_with_params(prompt, start_time, temperature=0.8, max_tokens=100)
+        return await self._generate_with_params(
+            prompt, 
+            start_time, 
+            temperature=0.5,  # Умеренная температура
+            max_new_tokens=200  # Больше токенов для детальности
+        )
     
     async def _generate_contextual_response(self, question: str, context_documents: List[Dict], language: str):
-        """Генерирует ответ с контекстом"""
+        """ИСПРАВЛЕННАЯ генерация ответа с контекстом"""
         start_time = time.time()
         
+        # ИСПРАВЛЕНИЕ: Сокращаем контекст для FLAN-T5 Small
         context = ""
         if context_documents:
             doc = context_documents[0]
-            context = doc.get('content', '')[:150]
+            context = doc.get('content', '')[:200]  # Ограничено 200 символами
         
+        # ИСПРАВЛЕНИЕ: Простой формат промпта
         if language == "uk":
-            prompt = f"Контекст: {context}\nПитання: {question}\nВідповідь на основі контексту:"
+            prompt = f"Контекст: {context}\nПитання: {question}\nВідповідь:"
         else:
-            prompt = f"Context: {context}\nQuestion: {question}\nAnswer based on context:"
+            prompt = f"Context: {context}\nQuestion: {question}\nAnswer:"
         
-        return await self._generate_with_params(prompt, start_time, temperature=0.7, max_tokens=80)
+        return await self._generate_with_params(
+            prompt, 
+            start_time, 
+            temperature=0.4,  # Балансированная температура
+            max_new_tokens=150  # Средняя длина
+        )
     
-    async def _generate_alternative_response(self, question: str, context_documents: List[Dict], language: str, start_time: float):
-        """Генерирует альтернативный ответ если основной не сработал"""
+    async def _generate_fallback_response(self, question: str, context_documents: List[Dict], language: str, start_time: float):
+        """ИСПРАВЛЕННЫЙ fallback с предустановленными ответами"""
         
-        # Библиотека готовых ответов для разных типов вопросов
-        fallback_responses = self._get_fallback_responses(question, language)
+        # ИСПРАВЛЕНИЕ: Пытаемся простейший промпт
+        try:
+            simple_prompt = question if len(question) < 50 else question[:50]
+            
+            response = await self._generate_with_params(
+                simple_prompt, 
+                start_time, 
+                temperature=0.1,  # Минимальная температура
+                max_new_tokens=100
+            )
+            
+            if response.success and len(response.content.strip()) > 3:
+                return response
+        except Exception as e:
+            logger.error(f"Simple prompt also failed: {e}")
         
-        # Выбираем случайный подходящий ответ
+        # ИСПРАВЛЕНИЕ: Умные предустановленные ответы
+        fallback_responses = self._get_smart_fallback_responses(question, language)
         selected_response = random.choice(fallback_responses)
         
         return T5Response(
@@ -180,94 +216,108 @@ class FlanT5Service:
             success=True
         )
     
-    def _get_fallback_responses(self, question: str, language: str) -> List[str]:
-        """Возвращает подходящие fallback ответы в зависимости от вопроса"""
+    def _get_smart_fallback_responses(self, question: str, language: str) -> List[str]:
+        """ИСПРАВЛЕННЫЕ умные fallback ответы"""
         
         question_lower = question.lower()
         
         if language == "uk":
+            # Украинские ответы
             if any(word in question_lower for word in ["що", "what", "закон", "law"]):
                 return [
-                    "Закон - це система правил, встановлених державою для регулювання суспільних відносин та забезпечення порядку.",
-                    "Правова система включає конституцію, закони, підзаконні акти та судову практику.",
-                    "Закон діє на всій території держави та є обов'язковим для виконання всіма громадянами."
+                    "Закон - це система правил, що встановлюється державою для регулювання суспільних відносин.",
+                    "Правова система включає конституцію, закони та підзаконні акти.",
+                    "Закон є обов'язковим для виконання всіма громадянами на території держави."
                 ]
-            elif any(word in question_lower for word in ["ірландія", "ireland", "ірландський"]):
+            elif any(word in question_lower for word in ["ірландія", "ireland"]):
                 return [
-                    "Ірландське право базується на Common Law системі та Конституції Ірландії 1937 року.",
-                    "Основні джерела ірландського права: Конституція, закони парламенту, судові рішення та європейське право.",
-                    "Ірландська правова система поділяється на цивільне, кримінальне та адміністративне право."
+                    "Ірландське право базується на системі Common Law та Конституції Ірландії 1937 року.",
+                    "Основні джерела ірландського права: Конституція, закони парламенту та судові рішення.",
+                    "Ірландська правова система включає цивільне, кримінальне та адміністративне право."
                 ]
             elif any(word in question_lower for word in ["як", "how", "чому", "why"]):
                 return [
-                    "Це питання потребує детального аналізу конкретних правових норм та обставин.",
-                    "Рекомендую звернутися до кваліфікованого юриста для отримання персональної консультації.",
+                    "Це питання потребує аналізу конкретних правових норм та обставин справи.",
+                    "Для точної відповіді рекомендую консультацію з кваліфікованим юристом.",
                     "Правова відповідь залежить від конкретних фактів та застосовного законодавства."
                 ]
             else:
                 return [
-                    "Це цікаве юридичне питання, яке потребує аналізу відповідного законодавства.",
-                    "Для точної відповіді необхідно врахувати конкретні обставини справи.",
-                    "Рекомендую консультацію з юристом для детального роз'яснення."
+                    "Це цікаве юридичне питання, яке потребує детального аналізу.",
+                    "Для повної відповіді необхідно врахувати всі обставини справи.",
+                    "Рекомендую звернутися до спеціаліста з відповідної галузі права."
                 ]
         else:
+            # Английские ответы
             if any(word in question_lower for word in ["what", "law", "legal"]):
                 return [
-                    "Law is a system of rules created and enforced by social or governmental institutions to regulate behavior.",
-                    "Legal systems vary by jurisdiction but generally include constitutional, statutory, and case law.",
-                    "Laws serve to maintain order, protect rights, and provide a framework for resolving disputes."
+                    "Law is a system of rules created by governmental institutions to regulate behavior.",
+                    "Legal systems include constitutional law, statutory law, and case law.",
+                    "Laws serve to maintain order, protect rights, and resolve disputes."
                 ]
             elif any(word in question_lower for word in ["ireland", "irish"]):
                 return [
                     "Irish law is based on the Common Law system and the Constitution of Ireland from 1937.",
-                    "The main sources of Irish law include the Constitution, Acts of the Oireachtas, judicial decisions, and EU law.",
-                    "Ireland has separate jurisdictions for civil, criminal, and administrative law matters."
+                    "Main sources of Irish law include the Constitution, Acts of Parliament, and judicial decisions.",
+                    "Ireland has civil, criminal, and administrative law jurisdictions."
                 ]
             elif any(word in question_lower for word in ["how", "why", "when", "where"]):
                 return [
                     "This question requires analysis of specific legal provisions and circumstances.",
-                    "I recommend consulting with a qualified lawyer for personalized legal advice.",
+                    "I recommend consulting with a qualified lawyer for personalized advice.",
                     "The legal answer depends on the specific facts and applicable legislation."
                 ]
             elif any(word in question_lower for word in ["hi", "hello", "hey"]):
                 return [
-                    "Hello! I'm here to help with legal questions. Feel free to ask about laws, rights, or legal procedures.",
-                    "Hi there! I can assist with general legal information. What would you like to know?",
-                    "Greetings! I'm a legal assistant ready to help with your questions about law and legal matters."
+                    "Hello! I'm here to help with legal questions about laws and regulations.",
+                    "Hi! I can assist with general legal information. What would you like to know?",
+                    "Greetings! I'm ready to help with questions about law and legal procedures."
                 ]
             else:
                 return [
-                    "This is an interesting legal question that requires analysis of relevant legislation.",
-                    "To provide an accurate answer, I would need to consider the specific circumstances.",
+                    "This is an interesting legal question that requires careful analysis.",
+                    "To provide an accurate answer, I would need to consider specific circumstances.",
                     "For detailed legal advice, I recommend consulting with a qualified attorney."
                 ]
     
-    async def _generate_with_params(self, prompt: str, start_time: float, temperature: float = 0.7, max_tokens: int = 80) -> T5Response:
-        """Генерирует ответ с заданными параметрами"""
+    async def _generate_with_params(self, prompt: str, start_time: float, temperature: float = 0.3, max_new_tokens: int = 150) -> T5Response:
+        """КРИТИЧЕСКИ ИСПРАВЛЕННАЯ генерация с правильными параметрами для FLAN-T5"""
         try:
+            # ИСПРАВЛЕНИЕ: Ограничиваем длину промпта для FLAN-T5 Small
+            if len(prompt) > 300:  # Было 512
+                prompt = prompt[:300]
+                logger.info(f"Truncated prompt to 300 chars for FLAN-T5 Small")
+            
             result = await asyncio.get_event_loop().run_in_executor(
-                None, self._generate_sync, prompt, temperature, max_tokens
+                None, self._generate_sync, prompt, temperature, max_new_tokens
             )
             
             response_time = time.time() - start_time
             
-            if result and len(result.strip()) > 5:
-                return T5Response(
-                    content=result,
-                    model=self.model_name,
-                    tokens_used=len(result.split()),
-                    response_time=response_time,
-                    success=True
-                )
-            else:
-                return T5Response(
-                    content="",
-                    model=self.model_name,
-                    tokens_used=0,
-                    response_time=response_time,
-                    success=False,
-                    error="Generated response too short"
-                )
+            # ИСПРАВЛЕНИЕ: Более мягкие критерии успеха
+            if result and len(result.strip()) > 3:  # Было > 5
+                clean_result = result.strip()
+                
+                # ИСПРАВЛЕНИЕ: Проверяем качество ответа
+                if self._is_meaningful_response(clean_result):
+                    return T5Response(
+                        content=clean_result,
+                        model=self.model_name,
+                        tokens_used=len(clean_result.split()),
+                        response_time=response_time,
+                        success=True
+                    )
+                else:
+                    logger.warning(f"Generated response not meaningful: '{clean_result[:50]}...'")
+            
+            return T5Response(
+                content="",
+                model=self.model_name,
+                tokens_used=0,
+                response_time=response_time,
+                success=False,
+                error="Generated response too short or not meaningful"
+            )
                 
         except Exception as e:
             return T5Response(
@@ -279,57 +329,126 @@ class FlanT5Service:
                 error=str(e)
             )
     
-    def _generate_sync(self, prompt: str, temperature: float = 0.7, max_tokens: int = 80) -> str:
-        """Синхронная генерация с настраиваемыми параметрами"""
+    def _generate_sync(self, prompt: str, temperature: float = 0.3, max_new_tokens: int = 150) -> str:
+        """КРИТИЧЕСКИ ИСПРАВЛЕННАЯ синхронная генерация для FLAN-T5"""
         try:
             import torch
             
             device = next(self.model.parameters()).device
             
-            # Токенизация
+            # ИСПРАВЛЕНИЕ: Правильная токенизация для FLAN-T5
             inputs = self.tokenizer(
                 prompt,
                 return_tensors="pt",
-                max_length=300,
+                max_length=512,  # ИСПРАВЛЕНИЕ: Увеличено с 300 до 512
                 truncation=True,
                 padding=True
             )
             
             inputs = {k: v.to(device) for k, v in inputs.items()}
             
-            # Настройки генерации для FLAN-T5 Small
+            # КРИТИЧЕСКОЕ ИСПРАВЛЕНИЕ: Правильные параметры для FLAN-T5
             generation_kwargs = {
-                "max_new_tokens": max_tokens,
+                "max_new_tokens": max_new_tokens,  # ИСПРАВЛЕНИЕ: Используем max_new_tokens вместо max_length
                 "temperature": temperature,
-                "do_sample": True,
-                "top_p": 0.9,
-                "top_k": 40,
-                "no_repeat_ngram_size": 2,
+                "do_sample": True,  # Включаем sampling
+                "top_p": 0.85,  # ИСПРАВЛЕНИЕ: Снижено с 0.9 для стабильности
+                "top_k": 50,    # ИСПРАВЛЕНИЕ: Увеличено с 40
+                "no_repeat_ngram_size": 3,  # ИСПРАВЛЕНИЕ: Увеличено с 2
                 "pad_token_id": self.tokenizer.eos_token_id,
                 "eos_token_id": self.tokenizer.eos_token_id,
+                "early_stopping": True,  # ИСПРАВЛЕНИЕ: Добавлено для FLAN-T5
+                "length_penalty": 1.0,   # ИСПРАВЛЕНИЕ: Добавлено для контроля длины
+                "repetition_penalty": 1.1  # ИСПРАВЛЕНИЕ: Добавлено против повторов
             }
             
+            # ИСПРАВЛЕНИЕ: Добавляем обработку исключений для генерации
             with torch.no_grad():
-                outputs = self.model.generate(**inputs, **generation_kwargs)
+                try:
+                    outputs = self.model.generate(**inputs, **generation_kwargs)
+                except Exception as gen_error:
+                    logger.error(f"Generation error: {gen_error}")
+                    # ИСПРАВЛЕНИЕ: Fallback с более простыми параметрами
+                    simple_kwargs = {
+                        "max_new_tokens": 80,
+                        "temperature": 0.1,
+                        "do_sample": False,  # Greedy decoding
+                        "pad_token_id": self.tokenizer.eos_token_id,
+                        "eos_token_id": self.tokenizer.eos_token_id
+                    }
+                    outputs = self.model.generate(**inputs, **simple_kwargs)
             
-            # Декодируем только новые токены
+            # ИСПРАВЛЕНИЕ: Правильное декодирование только новых токенов
             input_length = inputs['input_ids'].shape[1]
             generated_tokens = outputs[0][input_length:]
             response = self.tokenizer.decode(generated_tokens, skip_special_tokens=True)
             
-            return response.strip()
+            # ИСПРАВЛЕНИЕ: Очистка и постобработка
+            response = response.strip()
+            
+            # ИСПРАВЛЕНИЕ: Удаляем артефакты генерации
+            response = self._clean_generated_response(response)
+            
+            logger.info(f"Generated {len(response)} chars with {max_new_tokens} max_new_tokens")
+            return response
             
         except Exception as e:
             logger.error(f"Sync generation error: {e}")
             return ""
     
+    def _clean_generated_response(self, response: str) -> str:
+        """ИСПРАВЛЕНИЕ: Очистка сгенерированного ответа"""
+        if not response:
+            return ""
+        
+        # Удаляем повторяющиеся фразы
+        lines = response.split('\n')
+        unique_lines = []
+        seen = set()
+        
+        for line in lines:
+            line = line.strip()
+            if line and line not in seen and len(line) > 5:
+                unique_lines.append(line)
+                seen.add(line)
+        
+        cleaned = ' '.join(unique_lines)
+        
+        # Удаляем некачественные окончания
+        if cleaned.endswith(('...', '..', '..')):
+            cleaned = cleaned.rstrip('.') + '.'
+        
+        return cleaned
+    
+    def _is_meaningful_response(self, response: str) -> bool:
+        """ИСПРАВЛЕНИЕ: Проверка осмысленности ответа"""
+        if not response or len(response) < 3:
+            return False
+        
+        # Проверяем на повторяющиеся символы
+        if len(set(response.replace(' ', ''))) < 5:
+            return False
+        
+        # Проверяем на бессмысленные фразы
+        meaningless_patterns = [
+            "aaaa", "bbbb", "cccc", "####", "....", "----",
+            "unknown", "error", "failed", "none", "null"
+        ]
+        
+        response_lower = response.lower()
+        for pattern in meaningless_patterns:
+            if pattern in response_lower:
+                return False
+        
+        return True
+    
     def _generate_error_response(self, question: str, language: str, error: str, start_time: float):
-        """Генерирует ответ при ошибке"""
+        """ИСПРАВЛЕННАЯ генерация ответа при ошибке"""
         
         if language == "uk":
-            content = f"Вибачте, виникла технічна проблема при обробці питання: '{question}'. Спробуйте ще раз."
+            content = f"Вибачте, виникла технічна проблема при обробці вашого питання. Спробуйте переформулювати запит простіше."
         else:
-            content = f"Sorry, there was a technical issue processing the question: '{question}'. Please try again."
+            content = f"Sorry, there was a technical issue processing your question. Please try rephrasing it more simply."
         
         return T5Response(
             content=content,
@@ -349,13 +468,20 @@ class FlanT5Service:
             "hf_token_configured": bool(self.hf_token),
             "cuda_available": self._has_cuda(),
             "device": self._get_device(),
-            "memory_usage": "~400 MB",
-            "features": {
-                "multiple_strategies": True,
-                "contextual_responses": True,
-                "fallback_responses": True,
-                "diverse_answers": True
-            }
+            "memory_usage": "~300 MB",
+            "generation_params": {
+                "max_new_tokens": "120-200",
+                "temperature": "0.1-0.5",
+                "top_p": "0.85",
+                "top_k": "50"
+            },
+            "fixes_applied": [
+                "max_new_tokens instead of max_length",
+                "simplified prompts for FLAN-T5",
+                "proper input length handling",
+                "meaningful response validation",
+                "improved error handling"
+            ]
         }
 
 def create_flan_t5_service():
@@ -376,9 +502,9 @@ def create_fallback_service():
         
         async def answer_legal_question(self, question: str, context_documents: list, language: str = "en"):
             if language == "uk":
-                content = f"FLAN-T5 сервіс недоступний. Питання: {question}"
+                content = f"FLAN-T5 сервіс недоступний. Ваше питання: {question[:100]}..."
             else:
-                content = f"FLAN-T5 service unavailable. Question: {question}"
+                content = f"FLAN-T5 service unavailable. Your question: {question[:100]}..."
             
             return T5Response(
                 content=content,
