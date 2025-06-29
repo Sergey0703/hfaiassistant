@@ -106,41 +106,33 @@ class LlamaService:
                 }
             }
 
-            endpoints_to_try = [
-                f"https://api-inference.huggingface.co/models/{model}"
-            ]
+            task_type = "text2text-generation" if is_flan else "text-generation"
+            endpoint = f"https://api-inference.huggingface.co/pipeline/{task_type}/{model}"
+            logger.info(f"📡 Using endpoint: {endpoint}")
 
-            for endpoint in endpoints_to_try:
-                try:
-                    response = requests.post(endpoint, headers=headers, json=payload, timeout=30)
+            response = requests.post(endpoint, headers=headers, json=payload, timeout=30)
 
-                    if response.status_code == 200:
-                        data = response.json()
+            if response.status_code == 200:
+                data = response.json()
 
-                        if isinstance(data, list) and len(data) > 0:
-                            content = data[0].get("generated_text", "")
-                        elif isinstance(data, dict):
-                            content = data.get("generated_text", data.get("text", ""))
-                        else:
-                            content = str(data)
+                if isinstance(data, list) and len(data) > 0:
+                    content = data[0].get("generated_text") or data[0].get("text") or ""
+                elif isinstance(data, dict):
+                    content = data.get("generated_text") or data.get("text") or ""
+                else:
+                    content = str(data)
 
-                        content = self._clean_response(content)
+                content = self._clean_response(content)
 
-                        if content and len(content.strip()) > 5:
-                            response_time = time.time() - start_time
-                            return LlamaResponse(
-                                content=content,
-                                model=model,
-                                tokens_used=len(content.split()),
-                                response_time=response_time,
-                                success=True
-                            )
-                    else:
-                        logger.debug(f"HTTP {response.status_code} for {endpoint}")
-
-                except requests.exceptions.RequestException as e:
-                    logger.debug(f"Request error for {endpoint}: {e}")
-                    continue
+                if content and len(content.strip()) > 5:
+                    response_time = time.time() - start_time
+                    return LlamaResponse(
+                        content=content,
+                        model=model,
+                        tokens_used=len(content.split()),
+                        response_time=response_time,
+                        success=True
+                    )
 
             return LlamaResponse(
                 content="",
@@ -148,9 +140,18 @@ class LlamaService:
                 tokens_used=0,
                 response_time=time.time() - start_time,
                 success=False,
-                error="All endpoints failed"
+                error=f"HTTP {response.status_code}"
             )
 
+        except requests.exceptions.RequestException as e:
+            return LlamaResponse(
+                content="",
+                model=model,
+                tokens_used=0,
+                response_time=time.time() - start_time,
+                success=False,
+                error=str(e)
+            )
         except ImportError:
             return LlamaResponse(
                 content="",
