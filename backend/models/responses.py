@@ -1,56 +1,56 @@
-# ====================================
-# ФАЙЛ: backend/models/responses.py (ИСПРАВЛЕННАЯ ВЕРСИЯ)
-# Заменить существующий файл полностью
-# ====================================
-
+# backend/models/responses.py - УПРОЩЕННЫЕ МОДЕЛИ ОТВЕТОВ
 """
-Pydantic модели для исходящих ответов
+Упрощенные Pydantic модели для минимальной RAG системы
+Убраны избыточные поля, оставлены только необходимые
 """
 
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any, Union
 from datetime import datetime
 
+# ====================================
+# ОСНОВНЫЕ МОДЕЛИ ОТВЕТОВ
+# ====================================
+
 class ChatResponse(BaseModel):
     """Модель ответа чата"""
-    response: str = Field(..., description="Ответ ассистента")
+    response: str = Field(..., description="Ответ FLAN-T5 ассистента")
     sources: Optional[List[str]] = Field(None, description="Источники информации")
 
 class SearchResult(BaseModel):
     """Модель результата поиска"""
-    content: str = Field(..., description="Содержимое документа или фрагмента")
+    content: str = Field(..., description="Содержимое документа")
     filename: str = Field(..., description="Имя файла")
     document_id: str = Field(..., description="ID документа")
     relevance_score: float = Field(..., ge=0, le=1, description="Оценка релевантности")
-    metadata: Dict[str, Any] = Field(..., description="Метаданные документа")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Метаданные")
 
 class SearchResponse(BaseModel):
     """Модель ответа поиска"""
     query: str = Field(..., description="Поисковый запрос")
     results: List[SearchResult] = Field(..., description="Результаты поиска")
-    total_found: int = Field(..., ge=0, description="Общее количество найденных результатов")
-    search_metadata: Dict[str, Any] = Field(..., description="Метаданные поиска")
+    total_found: int = Field(..., ge=0, description="Количество найденных результатов")
+    search_metadata: Dict[str, Any] = Field(default_factory=dict, description="Метаданные поиска")
+
+# ====================================
+# ДОКУМЕНТЫ
+# ====================================
 
 class DocumentInfo(BaseModel):
-    """Модель информации о документе"""
+    """Упрощенная информация о документе"""
     id: Union[str, int] = Field(..., description="ID документа")
     filename: str = Field(..., description="Имя файла")
     category: str = Field(..., description="Категория документа")
-    source: str = Field(..., description="Источник документа")
-    original_url: str = Field(default="N/A", description="Оригинальный URL")
     content: str = Field(..., description="Содержимое документа")
     size: int = Field(..., ge=0, description="Размер в байтах")
-    word_count: int = Field(default=0, ge=0, description="Количество слов")
-    chunks_count: int = Field(default=1, ge=1, description="Количество чанков")
-    added_at: float = Field(..., description="Время добавления (Unix timestamp)")
-    metadata: Dict[str, Any] = Field(default_factory=dict, description="Дополнительные метаданные")
+    added_at: float = Field(..., description="Время добавления")
+    metadata: Dict[str, Any] = Field(default_factory=dict, description="Метаданные")
 
 class DocumentsResponse(BaseModel):
     """Модель ответа со списком документов"""
     documents: List[DocumentInfo] = Field(..., description="Список документов")
     total: int = Field(..., ge=0, description="Общее количество документов")
     message: Optional[str] = Field(None, description="Дополнительное сообщение")
-    database_type: Optional[str] = Field(None, description="Тип используемой базы данных")
 
 class DocumentUploadResponse(BaseModel):
     """Модель ответа загрузки документа"""
@@ -58,51 +58,18 @@ class DocumentUploadResponse(BaseModel):
     filename: str = Field(..., description="Имя загруженного файла")
     category: str = Field(..., description="Категория документа")
     size: int = Field(..., ge=0, description="Размер файла")
-    file_type: Optional[str] = Field(None, description="Тип файла")
 
 class DocumentDeleteResponse(BaseModel):
     """Модель ответа удаления документа"""
     message: str = Field(..., description="Сообщение о результате")
     deleted_id: Union[str, int] = Field(..., description="ID удаленного документа")
-    deleted_count: Optional[int] = Field(None, description="Количество удаленных элементов")
-    remaining_documents: Optional[int] = Field(None, description="Оставшееся количество документов")
-    database_type: Optional[str] = Field(None, description="Тип базы данных")
 
-class ScrapeResult(BaseModel):
-    """Модель результата парсинга одного URL"""
-    url: str = Field(..., description="Обработанный URL")
-    title: str = Field(..., description="Заголовок документа")
-    success: bool = Field(..., description="Успешность парсинга")
-    content_length: int = Field(default=0, ge=0, description="Длина контента")
-    error: Optional[str] = Field(None, description="Ошибка парсинга")
-
-class ScrapeResponse(BaseModel):
-    """Модель ответа парсинга"""
-    message: str = Field(..., description="Общее сообщение о результате")
-    results: List[ScrapeResult] = Field(..., description="Результаты парсинга")
-    summary: Dict[str, Any] = Field(..., description="Сводка результатов")
-
-class AdminStats(BaseModel):
-    """Модель статистики админ панели - ИСПРАВЛЕННАЯ"""
-    total_documents: int = Field(..., ge=0, description="Общее количество документов")
-    total_chats: int = Field(..., ge=0, description="Общее количество чатов")
-    categories: List[str] = Field(..., description="Список категорий")
-    
-    # ИСПРАВЛЕНО: services_status теперь Dict[str, Any] вместо Dict[str, bool]
-    services_status: Dict[str, Any] = Field(..., description="Статус сервисов")
-    
-    # Опциональные поля
-    database_type: Optional[str] = Field(None, description="Тип базы данных")
-    vector_db_info: Optional[Dict[str, Any]] = Field(None, description="Информация о векторной БД")
-    vector_db_error: Optional[str] = Field(None, description="Ошибка векторной БД")
-    
-    # Дополнительная информация для админ панели
-    initialization_summary: Optional[Dict[str, Any]] = Field(None, description="Сводка инициализации")
-    system_info: Optional[Dict[str, Any]] = Field(None, description="Системная информация")
-    recommendations: Optional[List[str]] = Field(None, description="Рекомендации")
+# ====================================
+# ИСТОРИЯ ЧАТОВ
+# ====================================
 
 class ChatHistoryItem(BaseModel):
-    """Модель элемента истории чата"""
+    """Элемент истории чата"""
     message: str = Field(..., description="Сообщение пользователя")
     response: str = Field(..., description="Ответ ассистента")
     language: str = Field(..., description="Язык")
@@ -110,22 +77,40 @@ class ChatHistoryItem(BaseModel):
     timestamp: Optional[float] = Field(None, description="Время сообщения")
 
 class ChatHistoryResponse(BaseModel):
-    """Модель ответа истории чатов"""
+    """Ответ истории чатов"""
     history: List[ChatHistoryItem] = Field(..., description="История чатов")
     total_messages: int = Field(..., ge=0, description="Общее количество сообщений")
 
+# ====================================
+# СТАТИСТИКА И СТАТУС
+# ====================================
+
+class MinimalStats(BaseModel):
+    """Упрощенная статистика системы"""
+    total_documents: int = Field(..., ge=0, description="Общее количество документов")
+    total_chats: int = Field(..., ge=0, description="Общее количество чатов")
+    categories: List[str] = Field(..., description="Список категорий")
+    services_status: Dict[str, Any] = Field(..., description="Статус сервисов")
+    
+    # Информация о моделях
+    model_info: Optional[Dict[str, Any]] = Field(None, description="Информация о моделях")
+    memory_info: Optional[Dict[str, Any]] = Field(None, description="Информация о памяти")
+
 class HealthCheckResponse(BaseModel):
-    """Модель ответа проверки здоровья системы"""
+    """Модель ответа проверки здоровья"""
     status: str = Field(..., description="Статус системы")
     services: Dict[str, Any] = Field(..., description="Статус сервисов")
-    vector_db: Optional[Dict[str, Any]] = Field(None, description="Информация о векторной БД")
-    vector_db_error: Optional[str] = Field(None, description="Ошибка векторной БД")
+    models: Optional[Dict[str, str]] = Field(None, description="Информация о моделях")
+    memory_target: Optional[str] = Field(None, description="Целевое потребление памяти")
 
-class PredefinedSitesResponse(BaseModel):
-    """Модель ответа предустановленных сайтов"""
-    ukraine: List[str] = Field(..., description="Украинские юридические сайты")
-    ireland: List[str] = Field(..., description="Ирландские юридические сайты")
-    total: Dict[str, int] = Field(..., description="Количество сайтов по странам")
+# ====================================
+# ОБЩИЕ ОТВЕТЫ
+# ====================================
+
+class SuccessResponse(BaseModel):
+    """Модель успешного ответа"""
+    message: str = Field(..., description="Сообщение об успехе")
+    data: Optional[Dict[str, Any]] = Field(None, description="Дополнительные данные")
 
 class ErrorResponse(BaseModel):
     """Модель ответа с ошибкой"""
@@ -133,13 +118,107 @@ class ErrorResponse(BaseModel):
     error_code: Optional[str] = Field(None, description="Код ошибки")
     timestamp: datetime = Field(default_factory=datetime.now, description="Время ошибки")
 
-class SuccessResponse(BaseModel):
-    """Модель успешного ответа"""
-    message: str = Field(..., description="Сообщение об успехе")
-    data: Optional[Dict[str, Any]] = Field(None, description="Дополнительные данные")
-
 class NotificationResponse(BaseModel):
     """Модель уведомления"""
     message: str = Field(..., description="Текст уведомления")
     type: str = Field(..., pattern="^(success|error|info|warning)$", description="Тип уведомления")
-    duration: Optional[int] = Field(None, description="Длительность показа в миллисекундах")
+
+# ====================================
+# СПЕЦИАЛИЗИРОВАННЫЕ ОТВЕТЫ ДЛЯ RAG
+# ====================================
+
+class ModelInfoResponse(BaseModel):
+    """Информация о моделях RAG системы"""
+    llm: Dict[str, Any] = Field(..., description="Информация о LLM")
+    embedding: Dict[str, Any] = Field(..., description="Информация об embedding модели")
+    vector_db: Dict[str, Any] = Field(..., description="Информация о векторной БД")
+    memory_usage: Dict[str, str] = Field(..., description="Потребление памяти")
+
+class SystemStatusResponse(BaseModel):
+    """Статус минимальной RAG системы"""
+    system: str = Field(default="Minimal RAG", description="Название системы")
+    version: str = Field(default="1.0.0", description="Версия")
+    status: str = Field(..., description="Статус системы")
+    models: Dict[str, str] = Field(..., description="Используемые модели")
+    memory: Dict[str, str] = Field(..., description="Информация о памяти")
+    features: List[str] = Field(..., description="Доступные функции")
+    platform: str = Field(..., description="Платформа развертывания")
+
+# ====================================
+# FLAN-T5 СПЕЦИФИЧНЫЕ ОТВЕТЫ
+# ====================================
+
+class T5GenerationResponse(BaseModel):
+    """Ответ генерации FLAN-T5"""
+    content: str = Field(..., description="Сгенерированный контент")
+    model: str = Field(default="google/flan-t5-small", description="Используемая модель")
+    tokens_used: int = Field(..., ge=0, description="Количество использованных токенов")
+    response_time: float = Field(..., ge=0, description="Время генерации")
+    success: bool = Field(..., description="Успешность генерации")
+    error: Optional[str] = Field(None, description="Ошибка генерации")
+
+class EmbeddingResponse(BaseModel):
+    """Ответ генерации эмбеддингов"""
+    embeddings: List[List[float]] = Field(..., description="Векторные представления")
+    model: str = Field(default="sentence-transformers/all-MiniLM-L6-v2", description="Модель")
+    dimensions: int = Field(default=384, description="Размерность векторов")
+    processing_time: float = Field(..., ge=0, description="Время обработки")
+
+# ====================================
+# ДИАГНОСТИКА И МОНИТОРИНГ
+# ====================================
+
+class MemoryDiagnostics(BaseModel):
+    """Диагностика памяти"""
+    total_memory_mb: float = Field(..., description="Общее потребление памяти в MB")
+    model_memory_mb: Dict[str, float] = Field(..., description="Память по моделям")
+    available_memory_mb: float = Field(..., description="Доступная память")
+    memory_efficiency: str = Field(..., description="Эффективность использования памяти")
+    recommendations: List[str] = Field(..., description="Рекомендации по оптимизации")
+
+class PerformanceMetrics(BaseModel):
+    """Метрики производительности"""
+    avg_search_time: float = Field(..., description="Среднее время поиска")
+    avg_generation_time: float = Field(..., description="Среднее время генерации")
+    avg_total_response_time: float = Field(..., description="Среднее время полного ответа")
+    throughput_requests_per_minute: float = Field(..., description="Пропускная способность")
+    success_rate: float = Field(..., ge=0, le=100, description="Процент успешных запросов")
+
+# ====================================
+# ЭКСПОРТ
+# ====================================
+
+# Основные модели для обязательного экспорта
+__all__ = [
+    # Основные ответы
+    "ChatResponse",
+    "SearchResponse", 
+    "SearchResult",
+    
+    # Документы
+    "DocumentInfo",
+    "DocumentsResponse",
+    "DocumentUploadResponse",
+    "DocumentDeleteResponse",
+    
+    # История и статистика
+    "ChatHistoryItem",
+    "ChatHistoryResponse",
+    "MinimalStats",
+    "HealthCheckResponse",
+    
+    # Общие ответы
+    "SuccessResponse",
+    "ErrorResponse",
+    "NotificationResponse",
+    
+    # RAG специфичные
+    "ModelInfoResponse",
+    "SystemStatusResponse",
+    "T5GenerationResponse", 
+    "EmbeddingResponse",
+    
+    # Диагностика
+    "MemoryDiagnostics",
+    "PerformanceMetrics"
+]

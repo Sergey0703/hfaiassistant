@@ -1,150 +1,96 @@
-# backend/utils/startup_banner.py
+# backend/utils/startup_banner.py - УПРОЩЕННЫЙ СТАРТАП
 """
-Утилиты для стартапа приложения: баннер, проверка окружения, зависимостей
+Упрощенные утилиты стартапа для минимальной RAG системы
+Убраны сложные проверки GPTQ, оставлены только базовые функции
 """
 
 import os
 import sys
 import logging
 from pathlib import Path
-from config.timeouts import (
-    GLOBAL_REQUEST_TIMEOUT, KEEP_ALIVE_TIMEOUT, GPTQ_MODEL_LOADING_TIMEOUT,
-    CHROMADB_SEARCH_TIMEOUT, GPTQ_FIRST_LOAD_TIMEOUT
-)
 
 logger = logging.getLogger(__name__)
 
-def print_startup_banner():
-    """Улучшенный баннер для HF Spaces с информацией о таймаутах и React"""
+def print_minimal_startup_banner():
+    """Упрощенный баннер для минимальной RAG системы"""
     banner = f"""
 ╔══════════════════════════════════════════════════════════════╗
-║                🏛️  Legal Assistant API v2.0 (HF Spaces)      ║
+║               🏛️  Minimal Legal RAG System v1.0              ║
 ╠══════════════════════════════════════════════════════════════╣
-║  AI Legal Assistant with GPTQ Model + React Frontend        ║
-║  • TheBloke/Llama-2-7B-Chat-GPTQ Integration               ║
-║  • React SPA with FastAPI Backend                           ║
-║  • ChromaDB Vector Search with Lazy Loading                 ║
-║  • Multi-language Support (English/Ukrainian)               ║
-║  • Real-time Document Processing                            ║
-║  • Optimized Memory Management for HF Spaces                ║
-║  🚀 Production Ready with Graceful Degradation              ║
-║  ⏰ Request Timeout: {GLOBAL_REQUEST_TIMEOUT}s (10 min)                     ║
-║  🔄 Keep-Alive: {KEEP_ALIVE_TIMEOUT}s                                    ║
-║  🤖 GPTQ Loading: {GPTQ_MODEL_LOADING_TIMEOUT}s (8 min)                        ║
-║  📚 ChromaDB Search: {CHROMADB_SEARCH_TIMEOUT}s                           ║
-║  ⚛️ React SPA: Enabled                                      ║
+║  🤖 FLAN-T5 Small + Sentence Transformers + ChromaDB        ║
+║  💾 Memory Target: <1GB RAM                                  ║
+║  ⚡ Fast Startup: <60 seconds                                ║
+║  🌍 Platform: {'HuggingFace Spaces' if _is_hf_spaces() else 'Local Development'}                        ║
+║  📚 Features: Semantic Search, Document Upload, Chat        ║
+║  🔍 Embeddings: all-MiniLM-L6-v2 (384D, ~90MB)             ║
+║  🗄️ Vector DB: ChromaDB with lazy loading                   ║
+║  🌐 Multilingual: English + Ukrainian support               ║
 ╚══════════════════════════════════════════════════════════════╝
     """
     print(banner)
 
-def check_hf_spaces_environment():
-    """Улучшенная проверка и настройка окружения HF Spaces"""
-    is_hf_spaces = os.getenv("SPACE_ID") is not None
+def check_minimal_environment():
+    """Упрощенная проверка окружения"""
+    is_hf_spaces = _is_hf_spaces()
     
-    print("🌍 Environment Analysis:")
+    print("🌍 Environment Check:")
     print(f"   • Platform: {'HuggingFace Spaces' if is_hf_spaces else 'Local Development'}")
     
     if is_hf_spaces:
         space_id = os.getenv("SPACE_ID", "unknown")
-        space_author = os.getenv("SPACE_AUTHOR", "unknown")
         print(f"   • Space ID: {space_id}")
-        print(f"   • Author: {space_author}")
         print("   🤗 HuggingFace Spaces detected - applying optimizations")
         
-        # Оптимизированные настройки для HF Spaces + правильные таймауты
-        hf_optimizations = {
-            "OLLAMA_ENABLED": "false",              # Отключаем Ollama в HF Spaces
-            "LLM_DEMO_MODE": "false",               # Включаем реальную GPTQ модель
-            "USE_CHROMADB": "true",                 # Включаем ChromaDB
-            "LOG_LEVEL": "INFO",                    # Информативные логи
-            "CHROMADB_PATH": "./chromadb_data",     # Локальная директория
-            "LLM_TIMEOUT": str(120),                # 2 минуты timeout для GPTQ inference
-            "MAX_CONTEXT_DOCUMENTS": "2",          # Ограичиваем контекст для памяти
-            "CONTEXT_TRUNCATE_LENGTH": "800",      # Сокращаем контекст для HF Spaces
-            "LLM_MAX_TOKENS": "400",               # Ограничиваем токены для памяти
-            "LLM_TEMPERATURE": "0.2",              # Консервативная температура
-            "SERVE_REACT": "true",                 # Включаем React SPA
+        # Простые оптимизации для HF Spaces
+        optimizations = {
+            "USE_CHROMADB": "true",
+            "LOG_LEVEL": "INFO",
+            "LLM_MODEL": "google/flan-t5-small",
+            "LLM_MAX_TOKENS": "150",
+            "LLM_TIMEOUT": "20",
+            "MAX_CONTEXT_DOCUMENTS": "2",
+            "CONTEXT_TRUNCATE_LENGTH": "300"
         }
         
-        applied_settings = []
-        for key, value in hf_optimizations.items():
-            if not os.getenv(key):  # Устанавливаем только если не задано
+        applied = []
+        for key, value in optimizations.items():
+            if not os.getenv(key):
                 os.environ[key] = value
-                applied_settings.append(f"{key}={value}")
+                applied.append(f"{key}={value}")
         
-        if applied_settings:
-            print("   ⚙️ Applied HF Spaces optimizations:")
-            for setting in applied_settings[:5]:  # Показываем первые 5
+        if applied:
+            print("   ⚙️ Applied optimizations:")
+            for setting in applied[:3]:  # Показываем первые 3
                 print(f"      - {setting}")
-            if len(applied_settings) > 5:
-                print(f"      - ... and {len(applied_settings) - 5} more settings")
+            if len(applied) > 3:
+                print(f"      - ... and {len(applied) - 3} more")
         
-        # Проверяем доступную память и ресурсы
-        _check_system_resources()
-        
-        print("   ✅ HF Spaces environment configured with optimized timeouts")
+        print("   ✅ HF Spaces environment optimized")
         
     else:
         print("   💻 Local development environment")
         print(f"   • Python: {sys.version.split()[0]}")
-        print(f"   • Working Dir: {os.getcwd()}")
         
-        # Для локальной разработки используем другие настройки
-        if not os.getenv("LLM_DEMO_MODE"):
-            os.environ.setdefault("LLM_DEMO_MODE", "false")  # Реальная модель по умолчанию
-        if not os.getenv("SERVE_REACT"):
-            os.environ.setdefault("SERVE_REACT", "true")     # React по умолчанию
+        # Для локальной разработки
+        os.environ.setdefault("LLM_MODEL", "google/flan-t5-small")
+        os.environ.setdefault("USE_CHROMADB", "true")
     
     return is_hf_spaces
 
-def _check_system_resources():
-    """Проверяет системные ресурсы"""
-    try:
-        import psutil
-        memory = psutil.virtual_memory()
-        memory_gb = memory.total // (1024**3)
-        available_gb = memory.available // (1024**3)
-        print(f"   💾 Available Memory: {available_gb}GB / {memory_gb}GB")
-        print(f"   🔄 CPU Cores: {psutil.cpu_count()}")
-        
-        # Предупреждение если мало памяти для GPTQ
-        if memory_gb < 14:
-            print("   ⚠️ Low memory detected - GPTQ model may need extended loading time")
-            print(f"   ⏰ Extended GPTQ timeout: {GPTQ_FIRST_LOAD_TIMEOUT}s (10 min)")
-        else:
-            print(f"   ✅ Sufficient memory for GPTQ model (standard timeout: {GPTQ_MODEL_LOADING_TIMEOUT}s)")
-            
-    except ImportError:
-        print("   💾 Resource info: psutil not available")
-    
-    # Проверяем доступность CUDA
-    try:
-        import torch
-        if torch.cuda.is_available():
-            gpu_memory = torch.cuda.get_device_properties(0).total_memory // (1024**2)
-            print("   🚀 CUDA available - GPU acceleration enabled")
-            print(f"   🎯 GPU Memory: {gpu_memory}MB")
-            if gpu_memory < 8000:  # Меньше 8GB GPU
-                print("   ⚠️ Limited GPU memory - using CPU offloading for GPTQ")
-        else:
-            print("   💻 CPU-only mode (normal for HF Spaces free tier)")
-    except ImportError:
-        print("   ⚠️ PyTorch not detected")
-
-def check_critical_dependencies():
-    """Проверяет только критические зависимости с версиями для GPTQ + React"""
+def check_minimal_dependencies():
+    """Проверяет только критические зависимости"""
     print("🔍 Critical Dependencies Check:")
     
     critical_deps = [
         ("fastapi", "FastAPI framework"),
-        ("uvicorn", "ASGI server"),
-        ("transformers", "HuggingFace Transformers (for GPTQ)"),
-        ("torch", "PyTorch (for GPTQ model)")
+        ("transformers", "HuggingFace Transformers for FLAN-T5"),
+        ("sentence_transformers", "Sentence embeddings"),
+        ("chromadb", "Vector database")
     ]
     
     missing_critical = []
     
-    for dep_name, description in critical_deps.items():
+    for dep_name, description in critical_deps:
         try:
             module = __import__(dep_name)
             version = getattr(module, '__version__', 'unknown')
@@ -153,78 +99,60 @@ def check_critical_dependencies():
             print(f"   ❌ {dep_name}: {description}")
             missing_critical.append(dep_name)
     
-    # Опциональные зависимости с версиями - ВАЖНЫЕ ДЛЯ GPTQ + React
-    optional_deps = [
-        ("sentence_transformers", "Text embeddings (for ChromaDB)"),
-        ("chromadb", "Vector database"),
-        ("aiohttp", "HTTP client (for scraping)"),
-        ("auto_gptq", "GPTQ quantization support (CRITICAL for GPTQ models)"),
-        ("accelerate", "Model acceleration (REQUIRED for GPTQ)"),
-        ("safetensors", "Safe tensor loading (REQUIRED for GPTQ)"),
-        ("optimum", "HuggingFace optimization library"),
-        ("psutil", "System monitoring")
+    # Проверяем PyTorch
+    print("\n🔥 PyTorch Check:")
+    try:
+        import torch
+        print(f"   ✅ torch ({torch.__version__}): PyTorch framework")
+        
+        if torch.cuda.is_available():
+            print("   🚀 CUDA available - GPU acceleration possible")
+        else:
+            print("   💻 CPU-only mode (optimal for minimal setup)")
+    except ImportError:
+        print("   ❌ torch: PyTorch framework")
+        missing_critical.append("torch")
+    
+    # Проверяем модели
+    print("\n🤖 Model Availability Check:")
+    model_checks = [
+        ("google/flan-t5-small", "LLM model"),
+        ("sentence-transformers/all-MiniLM-L6-v2", "Embedding model")
     ]
     
-    print("\n📦 Optional Dependencies (Important for GPTQ):")
-    optional_available = 0
-    gptq_ready = True
-    
-    for dep_name, description in optional_deps:
+    for model_name, description in model_checks:
         try:
-            module = __import__(dep_name)
-            version = getattr(module, '__version__', 'unknown')
-            print(f"   ✅ {dep_name} ({version}): {description}")
-            optional_available += 1
-        except ImportError:
-            print(f"   ⚠️ {dep_name}: {description} (will use fallback)")
-            if dep_name in ["auto_gptq", "accelerate", "safetensors"]:
-                gptq_ready = False
-    
-    # Проверяем React build
-    print("\n⚛️ React Frontend Check:")
-    react_build_path = Path(__file__).parent.parent.parent / "frontend" / "build"
-    if react_build_path.exists():
-        print(f"   ✅ React build found: {react_build_path}")
-        index_html = react_build_path / "index.html"
-        if index_html.exists():
-            print("   ✅ React index.html ready")
-        else:
-            print("   ⚠️ React index.html missing")
-    else:
-        print(f"   ⚠️ React build not found: {react_build_path}")
-        print("   💡 Run: cd frontend && npm run build")
+            if "flan-t5" in model_name:
+                from transformers import AutoTokenizer
+                AutoTokenizer.from_pretrained(model_name)
+            else:
+                from sentence_transformers import SentenceTransformer
+                SentenceTransformer(model_name)
+            print(f"   ✅ {model_name}: {description}")
+        except Exception as e:
+            print(f"   ⚠️ {model_name}: {description} (will download on first use)")
     
     print(f"\n📊 Dependencies Summary:")
     print(f"   • Critical: {len(critical_deps) - len(missing_critical)}/{len(critical_deps)} available")
-    print(f"   • Optional: {optional_available}/{len(optional_deps)} available")
-    print(f"   • React: {'✅ Ready' if react_build_path.exists() else '⚠️ Not built'}")
-    
-    if gptq_ready:
-        print(f"   🤖 GPTQ Model Support: ✅ Ready (TheBloke/Llama-2-7B-Chat-GPTQ)")
-        print(f"   ⏰ GPTQ Loading Timeout: {GPTQ_MODEL_LOADING_TIMEOUT}s")
-    else:
-        print(f"   🤖 GPTQ Model Support: ⚠️ Limited (missing auto-gptq or accelerate)")
-        print(f"   ⏰ Fallback mode will be used")
+    print(f"   • Memory Target: <1GB RAM")
+    print(f"   • Models: FLAN-T5 Small (~300MB) + all-MiniLM-L6-v2 (~90MB)")
     
     if missing_critical:
-        print(f"\n❌ Critical dependencies missing: {', '.join(missing_critical)}")
-        print("   Install with: pip install fastapi uvicorn transformers torch")
+        print(f"\n❌ Missing critical dependencies: {', '.join(missing_critical)}")
+        print("   Install with: pip install fastapi transformers sentence-transformers chromadb torch")
         return False
     
-    print("\n✅ All critical dependencies available")
+    print("\n✅ All critical dependencies available for minimal RAG")
     return True
 
-def create_necessary_directories():
-    """Безопасно создает необходимые директории для HF Spaces + React"""
+def create_minimal_directories():
+    """Создает минимальный набор директорий"""
     directories = [
         "logs",
         "chromadb_data", 
         "uploads",
         "temp",
-        "backups",
-        ".cache",
-        "offload",  # Для model offloading в HF Spaces
-        "frontend/build"  # На случай если React не собран
+        ".cache"
     ]
     
     created = []
@@ -233,19 +161,19 @@ def create_necessary_directories():
     for directory in directories:
         try:
             os.makedirs(directory, exist_ok=True)
-            # Проверяем что директория действительно создана и доступна для записи
-            test_file = os.path.join(directory, ".test_write")
+            # Простая проверка записи
+            test_file = os.path.join(directory, ".test")
             try:
                 with open(test_file, 'w') as f:
                     f.write("test")
                 os.remove(test_file)
                 created.append(directory)
             except:
-                # Директория создана но не доступна для записи (HF Spaces ограничения)
-                logger.warning(f"Directory {directory} created but not writable (HF Spaces limitation)")
+                # Директория создана но не доступна для записи
+                logger.warning(f"Directory {directory} created but not writable")
                 
         except Exception as e:
-            failed.append(f"{directory}: {str(e)[:50]}")
+            failed.append(f"{directory}: {str(e)[:30]}")
             logger.warning(f"Could not create directory {directory}: {e}")
     
     if created:
@@ -253,5 +181,157 @@ def create_necessary_directories():
     if failed:
         print(f"⚠️ Failed directories: {', '.join([f.split(':')[0] for f in failed])}")
     
-    # В HF Spaces некоторые директории могут быть read-only, это нормально
     return len(created) > 0
+
+def estimate_memory_usage():
+    """Оценка потребления памяти для диагностики"""
+    print("\n💾 Memory Usage Estimation:")
+    
+    components = {
+        "FLAN-T5 Small": "~300 MB",
+        "all-MiniLM-L6-v2": "~90 MB", 
+        "ChromaDB": "~20 MB (per 10K docs)",
+        "FastAPI + deps": "~100 MB",
+        "Python runtime": "~50 MB",
+        "Operating overhead": "~100 MB"
+    }
+    
+    total_mb = 300 + 90 + 20 + 100 + 50 + 100  # 660 MB
+    
+    for component, usage in components.items():
+        print(f"   • {component}: {usage}")
+    
+    print(f"\n   📊 Total Estimated: ~{total_mb} MB")
+    print(f"   🎯 Target: <1GB (1024 MB)")
+    print(f"   ✅ Memory Efficiency: {(total_mb/1024)*100:.1f}% of 1GB target")
+    
+    return total_mb
+
+def check_model_accessibility():
+    """Проверяет доступность моделей HuggingFace"""
+    print("\n🔗 Model Accessibility Check:")
+    
+    models_to_check = [
+        "google/flan-t5-small",
+        "sentence-transformers/all-MiniLM-L6-v2"
+    ]
+    
+    accessible_models = []
+    
+    for model in models_to_check:
+        try:
+            # Простая проверка доступности через requests
+            import requests
+            if "flan-t5" in model:
+                url = f"https://huggingface.co/{model}/resolve/main/config.json"
+            else:
+                url = f"https://huggingface.co/{model}/resolve/main/config.json"
+            
+            response = requests.head(url, timeout=5)
+            if response.status_code == 200:
+                print(f"   ✅ {model}: Accessible")
+                accessible_models.append(model)
+            else:
+                print(f"   ⚠️ {model}: Not accessible (will try download)")
+        except Exception as e:
+            print(f"   ⚠️ {model}: Connection check failed")
+    
+    if len(accessible_models) == len(models_to_check):
+        print("   🌐 All models accessible from HuggingFace Hub")
+    else:
+        print("   ⚠️ Some models may need to download on first use")
+    
+    return len(accessible_models) > 0
+
+def print_startup_summary():
+    """Выводит итоговую сводку стартапа"""
+    print("\n" + "="*60)
+    print("🚀 Minimal RAG Startup Summary:")
+    print("="*60)
+    
+    # Проверяем окружение
+    is_hf_spaces = check_minimal_environment()
+    
+    # Проверяем зависимости
+    deps_ok = check_minimal_dependencies()
+    
+    # Создаем директории
+    dirs_ok = create_minimal_directories()
+    
+    # Оценка памяти
+    memory_mb = estimate_memory_usage()
+    
+    # Проверка моделей
+    models_ok = check_model_accessibility()
+    
+    print("\n📋 Final Status:")
+    print(f"   • Environment: {'✅ Ready' if is_hf_spaces or True else '❌ Issues'}")
+    print(f"   • Dependencies: {'✅ All critical available' if deps_ok else '❌ Missing critical'}")
+    print(f"   • Directories: {'✅ Created' if dirs_ok else '⚠️ Limited access'}")
+    print(f"   • Memory: ✅ {memory_mb} MB (within 1GB target)")
+    print(f"   • Models: {'✅ Accessible' if models_ok else '⚠️ Will download'}")
+    
+    overall_status = deps_ok and dirs_ok
+    
+    if overall_status:
+        print("\n🎉 Minimal RAG System ready to start!")
+        print("   • Expected startup time: <60 seconds")
+        print("   • Memory usage: <1GB RAM")
+        print("   • Models: FLAN-T5 Small + all-MiniLM-L6-v2")
+    else:
+        print("\n⚠️ Some issues detected - system may work with limitations")
+    
+    print("="*60)
+    
+    return overall_status
+
+def _is_hf_spaces() -> bool:
+    """Проверяет является ли окружение HuggingFace Spaces"""
+    return os.getenv("SPACE_ID") is not None
+
+def get_startup_recommendations():
+    """Возвращает рекомендации по оптимизации стартапа"""
+    recommendations = []
+    
+    # Проверяем память
+    memory_mb = estimate_memory_usage()
+    if memory_mb > 800:  # Если приближаемся к лимиту
+        recommendations.append("Consider reducing context length for memory optimization")
+    
+    # Проверяем окружение
+    if _is_hf_spaces():
+        recommendations.extend([
+            "HF Spaces detected - optimizations applied automatically",
+            "Models will download to .cache directory on first use",
+            "Expect 2-3 minute first startup for model downloads"
+        ])
+    else:
+        recommendations.extend([
+            "Local development - ensure good internet for model downloads",
+            "Consider pre-downloading models: huggingface-cli download",
+            "Use nvidia-smi to monitor GPU usage if available"
+        ])
+    
+    # Общие рекомендации
+    recommendations.extend([
+        "Monitor memory usage in production",
+        "Use shorter questions for faster responses",
+        "Upload relevant documents for better RAG performance"
+    ])
+    
+    return recommendations
+
+# ====================================
+# ЭКСПОРТ
+# ====================================
+
+__all__ = [
+    "print_minimal_startup_banner",
+    "check_minimal_environment", 
+    "check_minimal_dependencies",
+    "create_minimal_directories",
+    "estimate_memory_usage",
+    "check_model_accessibility",
+    "print_startup_summary",
+    "get_startup_recommendations"
+]

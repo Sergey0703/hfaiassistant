@@ -1,7 +1,7 @@
 # backend/app/__init__.py - УПРОЩЁННАЯ ФАБРИКА ПРИЛОЖЕНИЯ
 """
-Упрощённая фабрика FastAPI приложения без сложных lifespan и background задач
-Заменяет переусложнённый файл с lazy loading и множественными проверками
+Минимальная фабрика FastAPI приложения для RAG системы
+Убрана сложность lifespan, background tasks, сложные middleware
 """
 
 import logging
@@ -12,11 +12,11 @@ logger = logging.getLogger(__name__)
 
 def create_app():
     """
-    Создаёт FastAPI приложение с простой конфигурацией
-    Убирает всю сложность lifespan, background tasks, etc.
+    Создаёт FastAPI приложение для минимальной RAG системы
+    Простая конфигурация без сложностей
     """
     try:
-        logger.info("🚀 Creating simplified FastAPI application...")
+        logger.info("🚀 Creating minimal RAG FastAPI application...")
         
         # Импорты FastAPI
         from fastapi import FastAPI
@@ -25,7 +25,7 @@ def create_app():
         
         # Конфигурация
         try:
-            from app.config import settings, API_METADATA, API_TAGS
+            from app.config import API_METADATA, API_TAGS
             app_config = {
                 "title": API_METADATA["title"],
                 "version": API_METADATA["version"], 
@@ -36,20 +36,19 @@ def create_app():
         except ImportError as e:
             logger.warning(f"Config import failed: {e}, using defaults")
             app_config = {
-                "title": "Legal Assistant API",
-                "version": "2.0.0",
-                "description": "AI Legal Assistant with Llama integration"
+                "title": "Minimal RAG System",
+                "version": "1.0.0",
+                "description": "Minimal RAG with FLAN-T5 and sentence-transformers"
             }
             config_loaded = False
         
         # Создаём приложение
         app = FastAPI(**app_config)
         
-        # CORS middleware (первым!)
-        cors_origins = getattr(settings, 'CORS_ORIGINS', ["*"]) if config_loaded else ["*"]
+        # CORS middleware (упрощенный)
         app.add_middleware(
             CORSMiddleware,
-            allow_origins=cors_origins,
+            allow_origins=["*"],  # Для простоты
             allow_credentials=True,
             allow_methods=["*"],
             allow_headers=["*"],
@@ -63,27 +62,19 @@ def create_app():
             logger.info("✅ API routes configured")
         except Exception as e:
             logger.error(f"❌ API routes configuration failed: {e}")
-            # Добавляем fallback endpoint для диагностики
+            # Добавляем fallback endpoint
             _add_fallback_routes(app)
         
-        # Подключаем middleware
-        try:
-            from app.middleware import setup_middleware
-            setup_middleware(app)
-            logger.info("✅ Middleware configured")
-        except Exception as e:
-            logger.warning(f"⚠️ Middleware setup failed: {e}")
-        
-        # Настраиваем статические файлы React (если есть)
+        # Настраиваем статические файлы React (упрощенно)
         _setup_react_static_files(app)
         
         # Добавляем базовые endpoints
         _add_basic_endpoints(app)
         
-        # Глобальные обработчики ошибок
+        # Простые обработчики ошибок
         _setup_error_handlers(app)
         
-        logger.info("✅ FastAPI application created successfully")
+        logger.info("✅ Minimal RAG FastAPI application created successfully")
         return app
         
     except Exception as e:
@@ -107,14 +98,18 @@ def _add_basic_endpoints(app):
             return {
                 "status": overall_status,
                 "timestamp": time.time(),
-                "version": "2.0.0",
+                "version": "1.0.0",
+                "system": "Minimal RAG",
+                "models": {
+                    "llm": "google/flan-t5-small",
+                    "embedding": "sentence-transformers/all-MiniLM-L6-v2"
+                },
                 "services": {
                     "document_service": services.get("document_service_available", False),
-                    "llm_service": services.get("llm_available", False),
-                    "scraper_service": services.get("scraper_available", False)
+                    "llm_service": services.get("llm_available", False)
                 },
-                "platform": "HuggingFace Spaces" if services.get("huggingface_spaces") else "Local",
-                "llm_model": "Llama-3.1-8B-Instruct"
+                "memory_target": "<1GB RAM",
+                "platform": "HuggingFace Spaces" if services.get("huggingface_spaces") else "Local"
             }
         except Exception as e:
             return JSONResponse(
@@ -128,23 +123,26 @@ def _add_basic_endpoints(app):
     
     @app.get("/api-status")
     async def api_status():
-        """Информация о API статусе"""
+        """Информация о статусе API"""
         try:
-            from app.config import get_full_config_summary
-            config_summary = get_full_config_summary()
+            from app.config import get_environment_info
+            env_info = get_environment_info()
             
             return {
-                "api": "Legal Assistant API v2.0",
+                "api": "Minimal RAG System v1.0",
                 "status": "running",
-                "llm_model": "Llama-3.1-8B-Instruct",
                 "features": {
-                    "llama_integration": True,
-                    "vector_search": config_summary["database"]["use_chromadb"],
-                    "web_scraping": True,
+                    "flan_t5_integration": True,
+                    "semantic_search": True,
+                    "document_upload": True,
                     "multilingual": True,
-                    "react_frontend": _check_react_build()
+                    "memory_optimized": True
                 },
-                "config_validation": config_summary["validation"],
+                "models": {
+                    "llm": env_info["model"],
+                    "embedding": env_info["embedding_model"],
+                    "memory_estimate": env_info["memory_target"]
+                },
                 "endpoints": {
                     "docs": "/docs",
                     "health": "/health",
@@ -155,7 +153,7 @@ def _add_basic_endpoints(app):
             }
         except Exception as e:
             return {
-                "api": "Legal Assistant API v2.0",
+                "api": "Minimal RAG System v1.0",
                 "status": "running",
                 "error": f"Config error: {e}",
                 "basic_endpoints": ["/health", "/docs"]
@@ -167,78 +165,59 @@ def _add_fallback_routes(app):
     @app.get("/api")
     async def api_fallback():
         return {
-            "message": "Legal Assistant API",
-            "version": "2.0.0",
+            "message": "Minimal RAG System",
+            "version": "1.0.0",
             "status": "❌ API routes not configured",
+            "models": {
+                "llm": "google/flan-t5-small",
+                "embedding": "sentence-transformers/all-MiniLM-L6-v2"
+            },
             "available_endpoints": ["/health", "/api-status", "/docs"],
-            "issue": "API modules failed to load",
-            "recommendation": "Check that all API files are present"
+            "issue": "API modules failed to load"
         }
     
-    @app.get("/api/user/chat")
+    @app.post("/api/user/chat")
     async def chat_fallback():
         return {
-            "response": "Chat service is initializing. API routes not fully loaded yet.",
+            "response": "Chat service is initializing. FLAN-T5 model loading...",
             "sources": []
         }
 
 def _setup_react_static_files(app):
-    """Настраивает статические файлы React"""
+    """Настраивает статические файлы React (упрощенно)"""
     try:
         from fastapi.staticfiles import StaticFiles
         from fastapi.responses import FileResponse
         
-        # Определяем пути для разных окружений
-        hf_spaces_static = Path(__file__).parent.parent / "static"
-        local_build_path = Path(__file__).parent.parent.parent / "frontend" / "build"
+        # Простые пути для статики
+        static_paths = [
+            Path(__file__).parent.parent / "static",  # HF Spaces
+            Path(__file__).parent.parent.parent / "frontend" / "build"  # Local
+        ]
         
-        # Выбираем правильный путь
-        if hf_spaces_static.exists() and (hf_spaces_static / "index.html").exists():
-            react_build_path = hf_spaces_static
-            react_static_path = hf_spaces_static / "static"
-            logger.info(f"📁 Using HF Spaces React build: {react_build_path}")
-        elif local_build_path.exists():
-            react_build_path = local_build_path
-            react_static_path = local_build_path / "static"
-            logger.info(f"📁 Using local React build: {react_build_path}")
-        else:
-            logger.info("⚠️ No React build found")
-            _setup_api_only_root(app)
-            return
+        react_build_path = None
+        for path in static_paths:
+            if path.exists() and (path / "index.html").exists():
+                react_build_path = path
+                break
         
-        # Монтируем статические файлы React
-        if react_static_path.exists():
-            app.mount("/static", StaticFiles(directory=react_static_path), name="react_static")
-            logger.info(f"✅ React static files mounted: {react_static_path}")
-        
-        # React assets (manifest, favicon, etc.)
-        react_assets = ["manifest.json", "favicon.ico", "robots.txt"]
-        
-        for asset in react_assets:
-            asset_path = react_build_path / asset
-            if asset_path.exists():
-                def create_asset_handler(asset_name, build_path):
-                    async def serve_asset():
-                        return FileResponse(build_path / asset_name)
-                    return serve_asset
-                
-                app.get(f"/{asset}", include_in_schema=False)(
-                    create_asset_handler(asset, react_build_path)
-                )
-        
-        # Корневой маршрут для React SPA
-        index_path = react_build_path / "index.html"
-        if index_path.exists():
+        if react_build_path:
+            # Монтируем статические файлы
+            static_dir = react_build_path / "static"
+            if static_dir.exists():
+                app.mount("/static", StaticFiles(directory=static_dir), name="react_static")
+            
+            # Корневой маршрут для React
             @app.get("/", include_in_schema=False)
             async def serve_react_app():
-                return FileResponse(index_path, media_type="text/html")
+                return FileResponse(react_build_path / "index.html", media_type="text/html")
             
-            logger.info("✅ React SPA mounted at root path")
+            logger.info(f"✅ React SPA mounted: {react_build_path}")
         else:
             _setup_api_only_root(app)
     
     except Exception as e:
-        logger.warning(f"⚠️ React static files setup failed: {e}")
+        logger.warning(f"⚠️ React setup failed: {e}")
         _setup_api_only_root(app)
 
 def _setup_api_only_root(app):
@@ -246,9 +225,13 @@ def _setup_api_only_root(app):
     @app.get("/")
     async def root_fallback():
         return {
-            "message": "Legal Assistant API v2.0",
-            "llm_model": "Llama-3.1-8B-Instruct", 
-            "status": "API running, React frontend ready",
+            "message": "Minimal RAG System v1.0",
+            "models": {
+                "llm": "google/flan-t5-small (~300 MB)",
+                "embedding": "all-MiniLM-L6-v2 (~90 MB)"
+            },
+            "memory_target": "<1GB RAM",
+            "status": "API running, React frontend may not be built",
             "endpoints": {
                 "api_docs": "/docs",
                 "health": "/health",
@@ -256,28 +239,29 @@ def _setup_api_only_root(app):
                 "search": "/api/user/search",
                 "admin": "/api/admin"
             },
-            "react_status": "Files found, check static mounting"
+            "quick_start": [
+                "Try: POST /api/user/chat",
+                "Or visit: /docs for interactive API"
+            ]
         }
 
 def _setup_error_handlers(app):
-    """Настраивает обработчики ошибок"""
+    """Настраивает простые обработчики ошибок"""
     
     @app.exception_handler(404)
     async def not_found_handler(request, exc):
         path = str(request.url.path)
         
-        # Если это API роут
         if path.startswith("/api/"):
             return JSONResponse(
                 status_code=404,
                 content={
                     "detail": f"API endpoint not found: {path}",
-                    "available_endpoints": ["/api", "/api/user/chat", "/api/user/search"],
+                    "available_endpoints": ["/api/user/chat", "/api/user/search"],
                     "documentation": "/docs"
                 }
             )
         
-        # Для всех остальных - может быть React SPA
         return JSONResponse(
             status_code=404,
             content={
@@ -300,19 +284,6 @@ def _setup_error_handlers(app):
             }
         )
 
-def _check_react_build() -> bool:
-    """Проверяет собрано ли React приложение"""
-    # В HuggingFace Spaces React файлы копируются в ./static/
-    hf_spaces_path = Path(__file__).parent.parent / "static"
-    local_build_path = Path(__file__).parent.parent.parent / "frontend" / "build"
-    
-    # Проверяем HF Spaces путь (приоритет)
-    if (hf_spaces_path / "index.html").exists():
-        return True
-    
-    # Проверяем локальный путь
-    return (local_build_path / "index.html").exists()
-
 def _create_emergency_app(error: Exception):
     """Создаёт аварийное приложение"""
     logger.error(f"Creating emergency app due to: {error}")
@@ -321,9 +292,8 @@ def _create_emergency_app(error: Exception):
         from fastapi import FastAPI
         from fastapi.middleware.cors import CORSMiddleware
         
-        emergency_app = FastAPI(title="Legal Assistant API - Emergency Mode")
+        emergency_app = FastAPI(title="Minimal RAG - Emergency Mode")
         
-        # CORS даже в аварийном режиме
         emergency_app.add_middleware(
             CORSMiddleware,
             allow_origins=["*"],
@@ -336,16 +306,16 @@ def _create_emergency_app(error: Exception):
             return {
                 "status": "emergency_mode",
                 "error": str(error),
-                "message": "Application failed to initialize properly",
+                "message": "Minimal RAG failed to initialize properly",
                 "timestamp": time.time(),
-                "endpoints": {
-                    "this_status": "/",
-                    "try_docs": "/docs"
+                "models": {
+                    "target_llm": "google/flan-t5-small",
+                    "target_embedding": "sentence-transformers/all-MiniLM-L6-v2"
                 },
                 "recommendations": [
-                    "Check that all dependencies are installed",
-                    "Verify all Python modules are present",
-                    "Check server logs for detailed errors",
+                    "Check transformers installation",
+                    "Verify sentence-transformers availability",
+                    "Check HuggingFace Hub access",
                     "Try restarting the application"
                 ]
             }

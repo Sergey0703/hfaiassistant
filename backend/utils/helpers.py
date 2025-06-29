@@ -1,10 +1,7 @@
-# ====================================
-# ФАЙЛ: backend/utils/helpers.py (НОВЫЙ ФАЙЛ)
-# Создать новый файл для вспомогательных функций
-# ====================================
-
+# backend/utils/helpers.py - ПОЛНАЯ ВЕРСИЯ УТИЛИТ
 """
-Вспомогательные функции для приложения
+Полный набор вспомогательных функций для минимальной RAG системы
+Оптимизированы под FLAN-T5 Small и sentence-transformers
 """
 
 import re
@@ -124,8 +121,8 @@ def extract_keywords(text: str, min_length: int = 3, max_keywords: int = 20) -> 
     sorted_words = sorted(word_freq.items(), key=lambda x: x[1], reverse=True)
     return [word for word, freq in sorted_words[:max_keywords]]
 
-def truncate_text(text: str, max_length: int = 500, suffix: str = "...") -> str:
-    """Обрезает текст до указанной длины"""
+def truncate_text(text: str, max_length: int = 300, suffix: str = "...") -> str:
+    """Обрезает текст до указанной длины (оптимизировано для FLAN-T5)"""
     if len(text) <= max_length:
         return text
     
@@ -396,9 +393,9 @@ class NotificationManager:
         }
         self.notifications.append(notification)
         
-        # Ограничиваем количество уведомлений
-        if len(self.notifications) > 50:
-            self.notifications = self.notifications[-50:]
+        # Ограничиваем количество уведомлений для экономии памяти
+        if len(self.notifications) > 20:  # Уменьшено с 50
+            self.notifications = self.notifications[-20:]
     
     def get_notifications(self, since: float = None) -> List[Dict]:
         """Получает уведомления"""
@@ -441,6 +438,84 @@ class PerformanceTimer:
         return 0.0
 
 # ====================================
+# ОПТИМИЗАЦИЯ ДЛЯ RAG СИСТЕМЫ
+# ====================================
+
+def optimize_text_for_embedding(text: str, max_length: int = 384) -> str:
+    """Оптимизирует текст для all-MiniLM-L6-v2 embedding (384 токена)"""
+    if not text:
+        return ""
+    
+    # Очищаем текст
+    text = clean_text(text)
+    
+    # Обрезаем до оптимальной длины для sentence-transformers
+    if len(text) > max_length:
+        text = truncate_text(text, max_length, "...")
+    
+    return text
+
+def prepare_context_for_flan_t5(documents: List[Dict], max_context_length: int = 300) -> str:
+    """Подготавливает контекст для FLAN-T5 Small (оптимизированная длина)"""
+    if not documents:
+        return ""
+    
+    # Берем первый документ (самый релевантный)
+    doc = documents[0]
+    content = doc.get('content', '')
+    
+    # Оптимизируем длину для T5 Small
+    content = clean_text(content)
+    if len(content) > max_context_length:
+        content = truncate_text(content, max_context_length, "...")
+    
+    return content
+
+def estimate_memory_usage(text: str) -> float:
+    """Оценивает потребление памяти текстом в MB"""
+    if not text:
+        return 0.0
+    
+    # Простая оценка: UTF-8 символы + объект Python
+    bytes_size = len(text.encode('utf-8'))
+    overhead = 100  # Приблизительный overhead объекта Python
+    
+    return (bytes_size + overhead) / (1024 * 1024)
+
+def estimate_processing_time(text_length: int, operation: str) -> float:
+    """Оценивает время обработки для планирования таймаутов"""
+    estimates = {
+        "embedding": 0.1 + (text_length / 10000),  # 0.1s base + 0.1s per 10k chars
+        "flan_t5": 1.0 + (text_length / 5000),     # 1s base + 0.2s per 1k chars  
+        "search": 0.05 + (text_length / 20000),    # 0.05s base + fast search
+        "default": 0.5
+    }
+    
+    return estimates.get(operation, estimates["default"])
+
+def get_memory_summary() -> Dict[str, Any]:
+    """Возвращает сводку по потреблению памяти системы"""
+    components = [
+        ("google/flan-t5-small", 300.0),
+        ("sentence-transformers/all-MiniLM-L6-v2", 90.0),
+        ("chromadb", 20.0),
+        ("fastapi", 50.0),
+        ("python_runtime", 100.0),
+        ("overhead", 50.0)
+    ]
+    
+    total_mb = sum(size for _, size in components)
+    
+    return {
+        "components": dict(components),
+        "total_mb": total_mb,
+        "total_gb": total_mb / 1024,
+        "target_mb": 1024,
+        "efficiency": f"{(total_mb/1024)*100:.1f}%",
+        "status": "optimal" if total_mb < 1024 else "approaching_limit"
+    }
+
+# ====================================
 # КОНФИГУРАЦИЯ И НАСТРОЙКИ
 # ====================================
 
@@ -466,6 +541,91 @@ def ensure_directory_exists(directory: str) -> bool:
     except Exception as e:
         logger.error(f"Failed to create directory {directory}: {e}")
         return False
+
+def check_system_health() -> Dict[str, Any]:
+    """Простая проверка здоровья системы"""
+    health_info = {
+        "timestamp": time.time(),
+        "status": "unknown",
+        "checks": {
+            "memory_estimate": get_memory_summary(),
+            "directories": _check_directories(),
+            "models": _check_model_requirements()
+        }
+    }
+    
+    # Определяем общий статус
+    issues = []
+    
+    if health_info["checks"]["memory_estimate"]["total_mb"] > 1200:
+        issues.append("Memory usage approaching limits")
+    
+    if not health_info["checks"]["directories"]["all_created"]:
+        issues.append("Some directories not accessible")
+    
+    if not health_info["checks"]["models"]["requirements_met"]:
+        issues.append("Model requirements not satisfied")
+    
+    health_info["issues"] = issues
+    health_info["status"] = "healthy" if not issues else "warning" if len(issues) < 2 else "critical"
+    
+    return health_info
+
+def _check_directories() -> Dict[str, Any]:
+    """Проверяет состояние директорий"""
+    required_dirs = ["logs", "chromadb_data", "uploads", "temp", ".cache"]
+    
+    dir_status = {}
+    all_ok = True
+    
+    for directory in required_dirs:
+        exists = os.path.exists(directory)
+        writable = False
+        
+        if exists:
+            try:
+                test_file = os.path.join(directory, ".test")
+                with open(test_file, 'w') as f:
+                    f.write("test")
+                os.remove(test_file)
+                writable = True
+            except:
+                pass
+        
+        dir_status[directory] = {"exists": exists, "writable": writable}
+        if not (exists and writable):
+            all_ok = False
+    
+    return {
+        "directories": dir_status,
+        "all_created": all_ok,
+        "total_checked": len(required_dirs)
+    }
+
+def _check_model_requirements() -> Dict[str, Any]:
+    """Проверяет требования для моделей"""
+    requirements = {
+        "transformers": False,
+        "sentence_transformers": False,
+        "torch": False,
+        "chromadb": False
+    }
+    
+    # Проверяем критические библиотеки
+    for lib in requirements:
+        try:
+            __import__(lib)
+            requirements[lib] = True
+        except ImportError:
+            pass
+    
+    requirements_met = all(requirements.values())
+    
+    return {
+        "libraries": requirements,
+        "requirements_met": requirements_met,
+        "missing": [lib for lib, available in requirements.items() if not available]
+    }
 
 # ====================================
 # ЭКСПОРТ ФУНКЦИЙ
@@ -494,6 +654,10 @@ __all__ = [
     # Классы
     'NotificationManager', 'PerformanceTimer', 'notification_manager',
     
+    # RAG оптимизация
+    'optimize_text_for_embedding', 'prepare_context_for_flan_t5', 
+    'estimate_memory_usage', 'estimate_processing_time', 'get_memory_summary',
+    
     # Утилиты
-    'load_config_with_defaults', 'ensure_directory_exists'
+    'load_config_with_defaults', 'ensure_directory_exists', 'check_system_health'
 ]

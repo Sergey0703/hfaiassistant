@@ -1,220 +1,113 @@
 # ====================================
-# FIXED REQUIREMENTS.TXT - СОВМЕСТИМЫЕ ВЕРСИИ
-# Исправленный список зависимостей без конфликтов
+# MINIMAL RAG SYSTEM REQUIREMENTS
+# Target: <1GB RAM, HuggingFace Spaces optimized
 # ====================================
 
 # ====================================
-# CORE FASTAPI DEPENDENCIES
+# CORE FASTAPI (REQUIRED)
 # ====================================
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
 python-multipart==0.0.6
 pydantic==2.5.0
-pydantic-settings==2.1.0
-python-dotenv==1.0.0
 
 # ====================================
-# HTTP AND ASYNC SUPPORT
+# LLM - HUGGINGFACE TRANSFORMERS
+# ====================================
+transformers>=4.35.0,<5.0.0
+torch>=2.1.0,<3.0.0  # CPU version
+tokenizers>=0.15.0
+
+# ====================================
+# EMBEDDINGS - SENTENCE TRANSFORMERS
+# ====================================
+sentence-transformers>=2.7.0,<3.0.0
+
+# ====================================
+# VECTOR DATABASE - CHROMADB
+# ====================================
+chromadb==0.4.18
+numpy>=1.21.0,<2.0.0
+
+# ====================================
+# HTTP AND ASYNC
 # ====================================
 aiohttp==3.9.1
 aiofiles==23.2.0
 httpx==0.25.2
 
 # ====================================
-# LLAMACPP - ОСНОВНАЯ LLM ЗАВИСИМОСТЬ
-# ====================================
-llama-cpp-python==0.2.11
-
-# ====================================
-# HUGGINGFACE HUB - АВТОЗАГРУЗКА МОДЕЛЕЙ
-# ====================================
-huggingface-hub>=0.20.0,<0.25.0
-transformers>=4.35.0,<5.0.0
-
-# ====================================
-# PYTORCH - CPU VERSION (СОВМЕСТИМАЯ)
-# ====================================
-# Используем --index-url https://download.pytorch.org/whl/cpu при установке
-torch>=2.1.0,<3.0.0
-torchvision>=0.16.0,<1.0.0
-torchaudio>=2.1.0,<3.0.0
-
-# ====================================
-# VECTOR DATABASE - CHROMADB
-# ====================================
-numpy>=1.21.0,<2.0.0
-sentence-transformers>=2.7.0,<3.0.0
-chromadb==0.4.18
-
-# ====================================
-# WEB SCRAPING (ИСПРАВЛЕНО)
+# WEB SCRAPING (MINIMAL)
 # ====================================
 beautifulsoup4==4.12.2
-lxml==4.9.3
 requests==2.31.0
 
 # ====================================
-# DATA PROCESSING (СОВМЕСТИМЫЕ ВЕРСИИ)
+# DATA PROCESSING (BASIC)
 # ====================================
-pandas>=2.0.0,<3.0.0
-openpyxl==3.1.2
-PyPDF2==3.0.1
-python-docx==1.1.0
+python-dotenv==1.0.0
 
 # ====================================
-# UTILITIES (ПРОВЕРЕННЫЕ ВЕРСИИ)
+# UTILITIES (ESSENTIAL ONLY)
 # ====================================
 tqdm==4.66.1
-cachetools==5.3.2
-orjson==3.9.10
 python-dateutil==2.8.2
-pytz==2023.3
 
 # ====================================
-# FILE HANDLING (ИСПРАВЛЕНО - БЕЗ MAGIC)
+# REMOVED HEAVY DEPENDENCIES:
 # ====================================
-filetype==1.2.0
-# УДАЛЕНО: magic==0.4.27 (проблемы с совместимостью)
+# ❌ llama-cpp-python (300MB+)
+# ❌ auto-gptq (500MB+) 
+# ❌ accelerate (100MB+)
+# ❌ safetensors (heavy)
+# ❌ optimum (not needed)
+# ❌ pandas (100MB+)
+# ❌ openpyxl, PyPDF2, python-docx
+# ❌ psutil, cryptography
+# ❌ lxml (XML parsing)
 
 # ====================================
-# CONFIGURATION AND VALIDATION
-# ====================================
-jsonschema==4.20.0
-
-# ====================================
-# RETRY AND ERROR HANDLING
-# ====================================
-tenacity==8.2.3
-
-# ====================================
-# TEXT PROCESSING
-# ====================================
-langdetect==1.0.9
-
-# ====================================
-# SYSTEM MONITORING (ОПЦИОНАЛЬНО)
-# ====================================
-psutil>=5.9.0,<6.0.0
-
-# ====================================
-# TESTING (DEVELOPMENT ONLY)
-# ====================================
-pytest==7.4.3
-pytest-asyncio==0.21.1
-pytest-cov==4.1.0
-
-# ====================================
-# SECURITY (БАЗОВАЯ)
-# ====================================
-cryptography>=41.0.0,<43.0.0
-
-# ====================================
-# СПЕЦИАЛЬНЫЕ ИНСТРУКЦИИ ДЛЯ УСТАНОВКИ:
+# INSTALLATION INSTRUCTIONS:
 # ====================================
 
-# 1. ОСНОВНАЯ УСТАНОВКА:
+# 1. BASIC INSTALL:
 # pip install -r requirements.txt
 
-# 2. PYTORCH (CPU VERSION):
-# pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+# 2. PYTORCH CPU (if needed):
+# pip install torch --index-url https://download.pytorch.org/whl/cpu
 
-# 3. LLAMACPP С ОПТИМИЗАЦИЕЙ:
-# macOS: CMAKE_ARGS="-DLLAMA_METAL=on" pip install llama-cpp-python
-# CUDA: CMAKE_ARGS="-DLLAMA_CUBLAS=on" pip install llama-cpp-python  
-# CPU: pip install llama-cpp-python
-
-# 4. ЕСЛИ ОШИБКИ УСТАНОВКИ:
-# pip install --upgrade pip setuptools wheel
-# pip install --no-cache-dir --force-reinstall -r requirements.txt
+# 3. FOR HUGGINGFACE SPACES:
+# These dependencies are automatically installed
 
 # ====================================
-# АЛЬТЕРНАТИВНАЯ УСТАНОВКА ПО ГРУППАМ:
+# MEMORY FOOTPRINT ESTIMATE:
 # ====================================
+# FastAPI + deps: ~50 MB
+# Transformers: ~100 MB
+# Sentence-transformers: ~80 MB
+# ChromaDB: ~30 MB
+# PyTorch CPU: ~150 MB
+# Other deps: ~50 MB
+# TOTAL BASE: ~460 MB
 
-# Группа 1 - Базовые компоненты:
-# pip install fastapi uvicorn[standard] pydantic pydantic-settings python-dotenv
+# MODELS:
+# FLAN-T5-Small: ~300 MB
+# all-MiniLM-L6-v2: ~90 MB
+# TOTAL MODELS: ~390 MB
 
-# Группа 2 - HTTP и async:  
-# pip install aiohttp aiofiles httpx python-multipart
-
-# Группа 3 - LlamaCpp (ОСНОВНОЕ):
-# pip install llama-cpp-python huggingface-hub transformers
-
-# Группа 4 - ChromaDB:
-# pip install chromadb sentence-transformers numpy
-
-# Группа 5 - PyTorch (CPU):
-# pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
-
-# Группа 6 - Веб-скрапинг:
-# pip install beautifulsoup4 lxml requests
-
-# Группа 7 - Обработка данных:
-# pip install pandas openpyxl PyPDF2 python-docx
-
-# Группа 8 - Утилиты:
-# pip install tqdm cachetools orjson tenacity psutil langdetect jsonschema filetype
+# GRAND TOTAL: ~850 MB
+# TARGET: <1GB ✅
 
 # ====================================
-# ИЗВЕСТНЫЕ ПРОБЛЕМЫ И РЕШЕНИЯ:
+# COMPATIBILITY:
 # ====================================
-
-# ПРОБЛЕМА: magic==0.4.27 не найден
-# РЕШЕНИЕ: Удален из requirements.txt, используется filetype вместо python-magic
-
-# ПРОБЛЕМА: Конфликты версий numpy  
-# РЕШЕНИЕ: Зафиксированы совместимые версии numpy<2.0.0
-
-# ПРОБЛЕМА: llama-cpp-python не устанавливается
-# РЕШЕНИЕ: 
-# 1. Обновите pip: pip install --upgrade pip
-# 2. Установите с флагами: CMAKE_ARGS="-DLLAMA_CUBLAS=on" pip install llama-cpp-python
-# 3. Или CPU версия: pip install llama-cpp-python --force-reinstall
-
-# ПРОБЛЕМА: PyTorch конфликты
-# РЕШЕНИЕ: Используйте CPU index для совместимости:
-# pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
-
-# ПРОБЛЕМА: ChromaDB ошибки
-# РЕШЕНИЕ: pip install chromadb --upgrade --no-deps, затем pip install -r requirements.txt
-
-# ====================================
-# МИНИМАЛЬНЫЕ ТРЕБОВАНИЯ СИСТЕМЫ:
-# ====================================
-# Python: 3.8+ (рекомендуется 3.11)
-# RAM: 8GB+ (рекомендуется 16GB)
-# Диск: 10GB+ свободного места
-# ОС: Linux, macOS, Windows 10+
-
-# ====================================
-# ПРОВЕРКА УСТАНОВКИ:
-# ====================================
-# python -c "import fastapi, llama_cpp, chromadb, sentence_transformers; print('✅ All critical imports OK')"
-
-# ====================================
-# ВЕРСИИ ДЛЯ HUGGINGFACE SPACES:
-# ====================================
-# Все зависимости совместимы с HuggingFace Spaces Python 3.11
-# Автоматическая установка PyTorch CPU версии
-# Кэширование моделей в ~/.cache/huggingface
-
-# ====================================
-# PRODUCTION NOTES:
-# ====================================
-# Для production используйте:
-# pip install --no-deps -r requirements.txt
-# pip install gunicorn supervisor
-
-# Для Docker:
-# COPY requirements.txt .
-# RUN pip install --no-cache-dir -r requirements.txt
-
-# ====================================
-# COMPATIBILITY MATRIX:
-# ====================================
-# ✅ Python 3.8, 3.9, 3.10, 3.11
-# ✅ Ubuntu 20.04+, macOS 11+, Windows 10+  
+# ✅ Python 3.8+
 # ✅ HuggingFace Spaces
-# ✅ Docker containers
 # ✅ CPU-only environments
-# ⚠️ Python 3.12 (некоторые пакеты могут быть несовместимы)
+# ✅ Low memory systems
+# ✅ Docker containers
+
+# ====================================
+# QUICK TEST:
+# ====================================
+# python -c "import fastapi, transformers, sentence_transformers, chromadb; print('✅ All imports OK')"

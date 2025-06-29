@@ -1,7 +1,7 @@
-# backend/main.py - УПРОЩЁННАЯ ТОЧКА ВХОДА
+# backend/main.py - МИНИМАЛЬНАЯ ТОЧКА ВХОДА
 """
-Упрощённая точка входа приложения без сложных проверок и множественных конфигураций
-Заменяет переусложнённый main.py с startup_banner, timeout_middleware и сложной диагностикой
+Упрощенная точка входа для минимальной RAG системы
+Убрана сложная диагностика, оставлены только базовые функции
 """
 
 import uvicorn
@@ -22,24 +22,24 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-def print_simple_banner():
-    """Простой баннер без сложных проверок"""
+def print_minimal_banner():
+    """Минимальный баннер для RAG системы"""
     is_hf_spaces = os.getenv("SPACE_ID") is not None
     
     banner = f"""
-🏛️ Legal Assistant API v2.0
+🏛️ Minimal Legal RAG System v1.0
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🦙 AI Legal Assistant with Llama-3.1-8B-Instruct
-⚛️ React Frontend + FastAPI Backend
+🤖 FLAN-T5 Small + Sentence Transformers + ChromaDB
+⚡ Target: <1GB RAM, Fast startup, HuggingFace Spaces optimized
 🌍 Platform: {'HuggingFace Spaces' if is_hf_spaces else 'Local Development'}
-📚 Features: Vector Search, Web Scraping, Multilingual Support
+📚 Features: Semantic Search, Document Upload, Multilingual Support
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     """
     print(banner)
 
 def create_directories():
     """Создаёт необходимые директории"""
-    directories = ["logs", "chromadb_data", "uploads", "temp", "backups"]
+    directories = ["logs", "chromadb_data", "uploads", "temp", ".cache"]
     
     for directory in directories:
         try:
@@ -50,7 +50,7 @@ def create_directories():
 def main():
     """Главная функция для разработки"""
     try:
-        print_simple_banner()
+        print_minimal_banner()
         
         # Определяем окружение
         is_hf_spaces = os.getenv("SPACE_ID") is not None
@@ -69,18 +69,21 @@ def main():
         host = "0.0.0.0"
         port = 7860 if is_hf_spaces else 8000
         
-        print(f"\n🚀 Server Configuration:")
+        print(f"\n🚀 Minimal RAG Configuration:")
         print(f"   • Host: {host}:{port}")
         print(f"   • Environment: {'HuggingFace Spaces' if is_hf_spaces else 'Local'}")
-        print(f"   • LLM Model: Llama-3.1-8B-Instruct")
+        print(f"   • LLM Model: google/flan-t5-small (~300 MB)")
+        print(f"   • Embedding: all-MiniLM-L6-v2 (~90 MB)")
+        print(f"   • Vector DB: ChromaDB")
+        print(f"   • Total RAM: ~920 MB target")
         print(f"   • API Documentation: http://localhost:{port}/docs")
         print(f"   • Health Check: http://localhost:{port}/health")
         
         if not is_hf_spaces:
             print(f"   • Main App: http://localhost:{port}/")
         
-        print(f"\n🎯 Starting Legal Assistant API...")
-        print("=" * 70)
+        print(f"\n⚡ Starting Minimal RAG System...")
+        print("=" * 50)
         
         # Запускаем сервер
         uvicorn.run(
@@ -88,16 +91,16 @@ def main():
             host=host,
             port=port,
             log_level="info",
-            reload=False,  # Отключаем reload в production
+            reload=False,
             access_log=True,
-            workers=1,  # Один worker для простоты
-            timeout_keep_alive=65,
-            limit_concurrency=10,  # Разумное ограничение
+            workers=1,
+            timeout_keep_alive=30,  # Меньше для экономии ресурсов
+            limit_concurrency=5,    # Ограничение для стабильности
         )
         
     except KeyboardInterrupt:
-        print("\n\n👋 Legal Assistant API shutting down...")
-        print("Thank you for using Legal Assistant!")
+        print("\n\n👋 Minimal RAG System shutting down...")
+        print("Thank you for using Minimal RAG!")
         
     except Exception as e:
         logger.error(f"Application startup failed: {e}")
@@ -109,7 +112,7 @@ def main():
 # ====================================
 
 try:
-    print("🚀 Initializing Legal Assistant API...")
+    print("🚀 Initializing Minimal RAG System...")
     
     # Проверяем окружение
     is_hf_spaces = os.getenv("SPACE_ID") is not None
@@ -119,8 +122,10 @@ try:
         
         # Простые оптимизации для HF Spaces
         os.environ.setdefault("USE_CHROMADB", "true")
-        os.environ.setdefault("LLM_DEMO_MODE", "false")  # Используем реальную Llama
         os.environ.setdefault("LOG_LEVEL", "INFO")
+        os.environ.setdefault("LLM_MODEL", "google/flan-t5-small")
+        os.environ.setdefault("LLM_MAX_TOKENS", "150")
+        os.environ.setdefault("LLM_TIMEOUT", "20")
     
     # Создаём приложение
     from app import create_app
@@ -129,13 +134,14 @@ try:
     if app is None:
         raise RuntimeError("Failed to create FastAPI application")
     
-    print("✅ Legal Assistant API ready for deployment")
+    print("✅ Minimal RAG System ready for deployment")
     print(f"🌍 Platform: {'HuggingFace Spaces' if is_hf_spaces else 'Local'}")
-    print("🦙 LLM Model: Llama-3.1-8B-Instruct via HuggingFace Inference API")
+    print("🤖 LLM Model: google/flan-t5-small")
+    print("🔍 Embedding: sentence-transformers/all-MiniLM-L6-v2")
+    print("📊 Vector DB: ChromaDB")
     print("⚛️ React Frontend: Integrated")
-    print("📚 Vector Search: ChromaDB enabled")
-    print("🌐 Web Scraping: Available")
-    print("🔄 Simple initialization: No background tasks")
+    print("💾 Memory Target: <1GB RAM")
+    print("⚡ Fast startup: No heavy models")
     
 except Exception as e:
     print(f"❌ Deployment initialization failed: {e}")
@@ -146,8 +152,8 @@ except Exception as e:
     from fastapi.middleware.cors import CORSMiddleware
     
     app = FastAPI(
-        title="Legal Assistant API - Minimal Mode", 
-        version="2.0.0",
+        title="Minimal RAG System - Fallback Mode", 
+        version="1.0.0",
         description="Minimal mode - some services may be unavailable"
     )
     
@@ -165,10 +171,12 @@ except Exception as e:
             "status": "minimal_mode",
             "error": str(e),
             "message": "Application running in minimal mode",
+            "model": "google/flan-t5-small",
+            "target_memory": "<1GB RAM",
             "available_endpoints": ["/docs", "/health"],
             "recommendations": [
-                "Check that all dependencies are installed",
-                "Verify all Python modules are present",
+                "Check that transformers is installed",
+                "Verify sentence-transformers availability", 
                 "Check server logs for detailed errors"
             ]
         }
@@ -189,65 +197,65 @@ except Exception as e:
 # ====================================
 
 try:
-    # Проверяем что у нас есть основные endpoints
-    from fastapi.responses import JSONResponse
-    
     @app.get("/api-info")
     async def api_info():
-        """Информация об API (fallback endpoint)"""
+        """Информация об API"""
         return {
-            "api": "Legal Assistant API v2.0",
-            "llm_model": "Llama-3.1-8B-Instruct",
+            "api": "Minimal RAG System v1.0",
+            "llm_model": "google/flan-t5-small",
+            "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+            "vector_db": "ChromaDB",
             "status": "running",
+            "memory_target": "<1GB RAM",
             "features": {
-                "llama_integration": True,
-                "vector_search": True,
-                "web_scraping": True,
-                "react_frontend": True,
-                "multilingual": True
+                "flan_t5_integration": True,
+                "semantic_search": True,
+                "document_upload": True,
+                "multilingual": True,
+                "fast_startup": True
             },
             "endpoints": {
                 "documentation": "/docs",
                 "health_check": "/health",
                 "api_status": "/api-status"
             },
-            "platform": "HuggingFace Spaces" if os.getenv("SPACE_ID") else "Local",
-            "simplified_architecture": True
+            "platform": "HuggingFace Spaces" if os.getenv("SPACE_ID") else "Local"
         }
     
-    @app.get("/llama-status")
-    async def llama_status():
-        """Статус Llama модели"""
+    @app.get("/model-status")
+    async def model_status():
+        """Статус моделей"""
         try:
             from app.dependencies import get_llm_service
             llm_service = get_llm_service()
             status = await llm_service.get_service_status()
             
             return {
-                "llama_model": "meta-llama/Llama-3.1-8B-Instruct",
-                "service_ready": status.get("ready", False),
-                "service_type": status.get("service_type", "unknown"),
-                "hf_token_configured": status.get("hf_token_configured", False),
-                "supported_languages": ["en", "uk"],
-                "features": {
-                    "legal_qa": True,
-                    "document_analysis": True,
-                    "multilingual": True,
-                    "context_aware": True
+                "llm_model": "google/flan-t5-small",
+                "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+                "llm_ready": status.get("ready", False),
+                "llm_type": status.get("service_type", "unknown"),
+                "memory_estimate": {
+                    "flan_t5": "~300 MB",
+                    "embeddings": "~90 MB", 
+                    "chromadb": "~20 MB",
+                    "total": "~920 MB"
                 },
-                "inference_method": "HuggingFace Inference API",
-                "recommendations": status.get("recommendations", [])
+                "features": {
+                    "text2text_generation": True,
+                    "semantic_embeddings": True,
+                    "vector_search": True,
+                    "multilingual": True
+                }
             }
         except Exception as e:
-            return JSONResponse(
-                status_code=503,
-                content={
-                    "llama_model": "meta-llama/Llama-3.1-8B-Instruct",
-                    "service_ready": False,
-                    "error": str(e),
-                    "message": "Llama service initialization failed"
-                }
-            )
+            return {
+                "llm_model": "google/flan-t5-small",
+                "embedding_model": "sentence-transformers/all-MiniLM-L6-v2", 
+                "llm_ready": False,
+                "error": str(e),
+                "message": "Model services initialization failed"
+            }
 
 except Exception as endpoint_error:
     print(f"⚠️ Could not add info endpoints: {endpoint_error}")
@@ -260,22 +268,22 @@ if __name__ == "__main__":
     main()
 else:
     # Когда модуль импортируется (deployment)
-    logger.info("📦 Legal Assistant API module imported")
-    logger.info("🦙 LLM Model: Llama-3.1-8B-Instruct")
-    logger.info("⚛️ React SPA: Integrated fullstack application")
-    logger.info("🚀 Ready for deployment")
-    logger.info("💡 Simplified architecture - no background tasks")
+    logger.info("📦 Minimal RAG System module imported")
+    logger.info("🤖 LLM Model: google/flan-t5-small")
+    logger.info("🔍 Embedding Model: sentence-transformers/all-MiniLM-L6-v2")
+    logger.info("💾 Memory Target: <1GB RAM")
+    logger.info("⚡ Fast startup enabled")
     
     print("🔗 Available endpoints:")
     print("   • Main App: /")
     print("   • API Documentation: /docs")
     print("   • Health Check: /health")
     print("   • API Status: /api-status")
-    print("   • Llama Status: /llama-status")
+    print("   • Model Status: /model-status")
     print("   • Chat API: /api/user/chat")
     print("   • Search API: /api/user/search")
     print("   • Admin Panel: /api/admin")
     
-    print("✅ Simplified Legal Assistant API ready")
-    print("🦙 Llama-3.1-8B-Instruct integration active")
-    print("⚡ Fast startup - no complex background loading")
+    print("✅ Minimal RAG System ready")
+    print("🤖 FLAN-T5 Small integration active")
+    print("⚡ Optimized for <1GB RAM usage")
